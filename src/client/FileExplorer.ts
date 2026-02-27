@@ -171,7 +171,6 @@ export class FileExplorer {
     try {
       const listing = await this.fetchDirectory(path);
       this.currentPath = listing.path;
-      this.selectedFile = null;
 
       this.renderBreadcrumb();
       this.renderFileList(listing);
@@ -358,7 +357,6 @@ export class FileExplorer {
       selectedItem.classList.add('selected');
     }
 
-    this.selectedFile = item;
     this.clearPreview();
 
     const container = document.getElementById('preview-content');
@@ -462,7 +460,13 @@ export class FileExplorer {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
+    // Reset editor state
+    this.editorFilePath = filePath;
+    this.editorOriginalContent = null;
+    this.editorMtime = null;
+
     const language = getLanguageName(item.name);
+    const isEditable = this.writeEnabled;
 
     container.innerHTML = `
       <div class="preview-header">
@@ -473,10 +477,22 @@ export class FileExplorer {
             <line x1="16" y1="13" x2="8" y2="13"/>
             <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
-          ${this.escapeHtml(item.name)}
+          <span id="editor-filename">${this.escapeHtml(item.name)}</span>
           ${language ? `<span class="lang-badge">${this.escapeHtml(language)}</span>` : ''}
+          ${isEditable ? '<span id="editor-dirty-indicator" class="dirty-indicator" style="display:none" title="Unsaved changes">●</span>' : ''}
         </div>
         <div class="preview-actions">
+          ${isEditable ? `
+            <span id="editor-status" class="editor-status" style="display:none"></span>
+            <button id="editor-save-btn" class="btn btn-success" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              Save
+            </button>
+          ` : ''}
           <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -487,39 +503,141 @@ export class FileExplorer {
           </a>
         </div>
       </div>
-      <div class="code-preview">
-        <pre><code>Loading…</code></pre>
-      </div>
+      ${isEditable
+        ? `<div class="text-preview"><textarea id="editor-textarea" class="editor-textarea" spellcheck="false" placeholder="Loading…"></textarea></div>`
+        : `<div class="code-preview"><pre><code>Loading…</code></pre></div>`
+      }
     `;
 
     try {
       const response = await fetch(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
       if (!response.ok) throw new Error('Failed to load file');
 
+      // Capture Last-Modified for conflict detection on save
+      const lastModified = response.headers.get('Last-Modified');
+      if (lastModified) {
+        this.editorMtime = new Date(lastModified).toISOString();
+      }
+
       const text = await response.text();
-      const codeEl = container.querySelector('code');
-      if (!codeEl) return;
+      this.editorOriginalContent = text;
 
-      const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
-
-      if (shouldHighlight) {
-        let result: { value: string };
-        if (language && hljs.getLanguage(language)) {
-          result = hljs.highlight(text, { language, ignoreIllegals: true });
-        } else {
-          result = hljs.highlightAuto(text);
+      if (isEditable) {
+        const textarea = container.querySelector<HTMLTextAreaElement>('#editor-textarea');
+        if (textarea) {
+          textarea.value = text;
+          textarea.addEventListener('input', () => this.onEditorInput(textarea));
         }
-        codeEl.innerHTML = result.value;
-        codeEl.classList.add('hljs');
+        const saveBtn = container.querySelector<HTMLButtonElement>('#editor-save-btn');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', () => this.saveFile());
+        }
       } else {
-        // File too large — plain text for performance
-        codeEl.textContent = text;
+        const codeEl = container.querySelector('code');
+        if (!codeEl) return;
+
+        const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
+        if (shouldHighlight) {
+          let result: { value: string };
+          if (language && hljs.getLanguage(language)) {
+            result = hljs.highlight(text, { language, ignoreIllegals: true });
+          } else {
+            result = hljs.highlightAuto(text);
+          }
+          codeEl.innerHTML = result.value;
+          codeEl.classList.add('hljs');
+        } else {
+          codeEl.textContent = text;
+        }
       }
     } catch (error) {
-      const codeEl = container.querySelector('code');
-      if (codeEl) {
-        codeEl.textContent = `Error loading file: ${(error as Error).message}`;
+      const el = container.querySelector('code, textarea');
+      if (el) {
+        el.textContent = `Error loading file: ${(error as Error).message}`;
       }
+    }
+  }
+
+  private onEditorInput(textarea: HTMLTextAreaElement) {
+    const isDirty = textarea.value !== this.editorOriginalContent;
+    this.setEditorDirty(isDirty);
+  }
+
+  private setEditorDirty(dirty: boolean) {
+    const saveBtn = document.querySelector<HTMLButtonElement>('#editor-save-btn');
+    const dirtyIndicator = document.querySelector<HTMLElement>('#editor-dirty-indicator');
+    if (saveBtn) saveBtn.disabled = !dirty;
+    if (dirtyIndicator) dirtyIndicator.style.display = dirty ? '' : 'none';
+  }
+
+  private async saveFile() {
+    const textarea = document.querySelector<HTMLTextAreaElement>('#editor-textarea');
+    const saveBtn = document.querySelector<HTMLButtonElement>('#editor-save-btn');
+
+    if (!textarea || !this.editorFilePath) return;
+
+    const content = textarea.value;
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+    }
+    this.showEditorStatus('', 'success'); // clear previous status
+
+    try {
+      const body: { content: string; mtime?: string } = { content };
+      if (this.editorMtime) body.mtime = this.editorMtime;
+
+      const res = await fetch(
+        `/api/browse/file?path=${encodeURIComponent(this.editorFilePath)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || `Server error (${res.status})`);
+      }
+
+      // Update tracked state
+      this.editorOriginalContent = content;
+      if (data.mtime) this.editorMtime = data.mtime;
+      this.setEditorDirty(false);
+      // Invalidate dir cache so file size info refreshes on next navigate
+      this.fileCache.delete(this.currentPath);
+
+      this.showEditorStatus('✓ Saved', 'success');
+    } catch (err) {
+      this.showEditorStatus(`✗ ${(err as Error).message}`, 'error');
+      // Re-enable save so user can retry
+      if (saveBtn) saveBtn.disabled = false;
+    } finally {
+      if (saveBtn) {
+        saveBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save
+        `;
+      }
+    }
+  }
+
+  private showEditorStatus(message: string, type: 'success' | 'error') {
+    const statusEl = document.querySelector<HTMLElement>('#editor-status');
+    if (!statusEl) return;
+    if (!message) { statusEl.style.display = 'none'; return; }
+    statusEl.textContent = message;
+    statusEl.className = `editor-status editor-status--${type}`;
+    statusEl.style.display = '';
+    if (type === 'success') {
+      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
     }
   }
 
@@ -586,6 +704,11 @@ export class FileExplorer {
   private clearPreview() {
     const container = document.getElementById('preview-content');
     if (!container) return;
+
+    // Reset editor state when switching away from a file
+    this.editorFilePath = null;
+    this.editorOriginalContent = null;
+    this.editorMtime = null;
 
     container.innerHTML = `
       <div class="preview-placeholder">
