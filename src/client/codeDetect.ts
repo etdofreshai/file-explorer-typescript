@@ -180,3 +180,12 @@ export function getLanguageName(filename: string): string | undefined {
   const basename = lower.split('/').pop() ?? lower;
   return FILENAME_LANGUAGE_MAP[basename];
 }
+
+/**
+ * Returns true when the filename has a Markdown extension (.md, .markdown, .mdx).
+ * Used to determine whether to show the rendered Preview / Raw toggle.
+ */
+export function isMarkdownExt(filename: string): boolean {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  return ext === 'md' || ext === 'markdown' || ext === 'mdx';
+}

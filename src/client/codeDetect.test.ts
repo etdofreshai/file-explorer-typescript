@@ -1,4 +1,4 @@
-import { isTextByExtension, getLanguageName } from './codeDetect';
+import { isTextByExtension, getLanguageName, isMarkdownExt } from './codeDetect';
 
 // ---------------------------------------------------------------------------
 // isTextByExtension
@@ -134,6 +134,32 @@ describe('getLanguageName — unknown extensions', () => {
     // Not in the language map — callers should fall back to auto-detect
     expect(getLanguageName('notes.txt')).toBeUndefined();
     expect(getLanguageName('data.csv')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMarkdownExt
+// ---------------------------------------------------------------------------
+
+describe('isMarkdownExt — markdown extensions', () => {
+  const markdownFiles = [
+    'README.md', 'CHANGELOG.md', 'notes.markdown', 'doc.mdx',
+    'README.MD', 'doc.MARKDOWN', // case-insensitive
+  ];
+
+  it.each(markdownFiles)('should detect %s as markdown', (filename) => {
+    expect(isMarkdownExt(filename)).toBe(true);
+  });
+});
+
+describe('isMarkdownExt — non-markdown files', () => {
+  const nonMarkdown = [
+    'app.ts', 'index.html', 'style.css', 'data.json',
+    'script.py', 'photo.jpg', 'archive.zip', 'Dockerfile',
+  ];
+
+  it.each(nonMarkdown)('should NOT detect %s as markdown', (filename) => {
+    expect(isMarkdownExt(filename)).toBe(false);
   });
 });
 

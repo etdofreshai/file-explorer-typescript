@@ -7,12 +7,13 @@ A web-based file explorer for browsing and previewing files on a mounted volume.
 - 🔒 **Secure Backend**: Path traversal protection, read-only by default
 - 📁 **Directory Browsing**: Navigate folders with breadcrumb navigation
 - 👁️ **File Preview**:
-  - **Code / text files** — syntax highlighting for 28+ languages (TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, C#, Kotlin, Swift, Dart, Ruby, PHP, Bash, SQL, JSON, YAML, TOML, XML, HTML, CSS/SCSS, Markdown, and more); editable in write mode
+  - **Code / text files** — opens in read-only view by default with syntax highlighting for 28+ languages (TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, C#, Kotlin, Swift, Dart, Ruby, PHP, Bash, SQL, JSON, YAML, TOML, XML, HTML, CSS/SCSS, Markdown, and more)
+  - **Markdown files** — rendered "Preview" mode (human-friendly) with a **Raw** toggle for highlighted source; defaults to rendered view
   - **Robust text detection** — extension + MIME-type fallback so code/config/log files open as text even when the server returns a generic MIME type (fixes `.ts` → `video/mp2t` misdetect)
   - Images (PNG, JPG, GIF, WebP, SVG)
   - Audio (MP3, WAV, OGG, etc.)
   - PDFs (iframe embed)
-- ✏️ **Optional In-Browser Editor**: Edit text files with Save, dirty-state indicator, and conflict detection (opt-in via `ENABLE_WRITE=true`)
+- ✏️ **Optional In-Browser Editor**: Explicit **Edit** button (shown next to Download in write mode) switches the current file into an editable textarea; Save, Cancel/back-to-view, dirty-state indicator, and conflict detection (opt-in via `ENABLE_WRITE=true`)
 - 🌙 **Dark / Light Mode**: Toggle via header button; defaults to dark; preference persisted in `localStorage`
 - 📱 **Responsive Design**: Two-pane layout on desktop, stacked on mobile
 - ⬇️ **Downloads**: One-click file download
@@ -73,16 +74,31 @@ Environment variables:
 | `SERVE_APP_ROOT` | *(auto)* | Static files directory (production). Defaults to `dist/client/` relative to the server binary — no manual config needed. Override only for custom/host-mounted frontends. |
 | `NODE_ENV` | `development` | Environment mode |
 
-## Write Mode (In-Browser Editor)
+## Interaction Model
+
+### Viewing Files
+
+All text and code files open in **read-only view mode** first:
+
+- **Code files** — syntax-highlighted source, scrollable, no editing risk
+- **Markdown files** — rendered "Preview" (human-friendly HTML) by default
+  - Click **Raw** in the action bar to see the highlighted Markdown source
+  - Click **Preview** to switch back to the rendered view
+
+### Write Mode (In-Browser Editor)
 
 By default the app is **read-only**. The write endpoint (`PUT /api/browse/file`) returns HTTP 403 unless `ENABLE_WRITE=true` is set in the environment.
 
-When write mode is enabled:
-- Text files display an editable `<textarea>` with a **Save** button
-- The Save button is disabled until the file is changed (dirty state)
-- A `●` indicator appears in the file title when there are unsaved changes
-- On save, the client sends the file's `Last-Modified` timestamp; the server rejects the write with **HTTP 409 Conflict** if the file was modified on disk since the client loaded it
-- Non-text files (images, audio, PDFs) are still read-only and display the same previews as before
+When write mode is enabled, an **Edit** button appears next to Download for all text/code files. Clicking it:
+
+1. Switches the file into an editable `<textarea>`
+2. Shows a **Save** button (disabled until changes are made) and a **Cancel** button
+3. A `●` indicator appears in the title when there are unsaved changes
+4. **Cancel** — prompts to confirm if there are unsaved changes, then returns to read-only view
+5. **Save** — writes changes to disk; on success, the dirty indicator clears and a "✓ Saved" message appears; the textarea remains open so you can keep editing
+6. On save, the client sends the file's `Last-Modified` timestamp; the server rejects the write with **HTTP 409 Conflict** if the file was modified on disk since the client loaded it
+
+Non-text files (images, audio, PDFs) are still read-only and display the same previews as before.
 
 ### Security Implications of `ENABLE_WRITE=true`
 
@@ -133,6 +149,13 @@ file-explorer-typescript/
 ├── tsconfig.server.json       # Backend TypeScript config
 └── package.json
 ```
+
+### Key Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `highlight.js` | Syntax highlighting for 28+ languages |
+| `marked` | Markdown → HTML rendering for `.md` / `.markdown` / `.mdx` files |
 
 ### API Endpoints
 
@@ -210,6 +233,8 @@ Tests cover:
 - [x] Syntax highlighting for code files
 - [x] Dark mode
 - [x] In-browser file editor with write mode
+- [x] Markdown rendered preview (Preview / Raw toggle)
+- [x] View-first UX: read-only by default, explicit Edit button in write mode
 - [ ] Internationalization (i18n)
 - [ ] File/folder bookmarking
 - [ ] Thumbnail generation for images

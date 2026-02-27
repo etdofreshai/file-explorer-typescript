@@ -1,5 +1,5 @@
 import { showError } from './main.js';
-import { isTextByExtension, getLanguageName } from './codeDetect.js';
+import { isTextByExtension, getLanguageName, isMarkdownExt } from './codeDetect.js';
 
 // ---------------------------------------------------------------------------
 // highlight.js — import core + the languages we want to bundle
@@ -34,6 +34,14 @@ import langSwift from 'highlight.js/lib/languages/swift';
 import langTypescript from 'highlight.js/lib/languages/typescript';
 import langXml from 'highlight.js/lib/languages/xml'; // also covers HTML, Vue, Svelte
 import langYaml from 'highlight.js/lib/languages/yaml';
+
+// ---------------------------------------------------------------------------
+// marked — Markdown renderer
+// ---------------------------------------------------------------------------
+import { marked } from 'marked';
+
+// Configure marked with safe defaults
+marked.setOptions({ async: false });
 
 hljs.registerLanguage('bash', langBash);
 hljs.registerLanguage('c', langC);
@@ -132,10 +140,25 @@ export class FileExplorer {
   // Write mode: determined by /api/health on init
   private writeEnabled = false;
 
-  // Editor state for the currently open text file
+  // ── Current text-file state ────────────────────────────────────────────────
+  /** Absolute virtual path of the currently-open text file. */
   private editorFilePath: string | null = null;
+  /** Original content fetched from the server (also used as "saved" baseline). */
   private editorOriginalContent: string | null = null;
+  /** Last-Modified header value (ISO string) from the server, for conflict detection. */
   private editorMtime: string | null = null;
+
+  // ── View / edit mode ───────────────────────────────────────────────────────
+  /** Whether the text pane is in view (read-only) or edit (textarea) mode. */
+  private fileViewMode: 'view' | 'edit' = 'view';
+  /** True when the currently open file has a Markdown extension. */
+  private currentIsMarkdown = false;
+  /** For markdown view mode: rendered 'preview' or 'raw' highlighted source. */
+  private mdDisplayMode: 'preview' | 'raw' = 'preview';
+  /** Cached FileItem for the currently-open text file (used during re-renders). */
+  private currentItem: FileItem | null = null;
+  /** highlight.js language identifier for the current file. */
+  private currentLanguage: string | undefined = undefined;
 
   constructor() {
     this.init();
@@ -456,18 +479,31 @@ export class FileExplorer {
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Text / Code / Markdown preview — VIEW + EDIT mode
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Main entry point for all text-file previews.
+   * 1. Resets mode state and shows a loading skeleton.
+   * 2. Fetches the file content.
+   * 3. Delegates to renderTextPreviewUI() which handles all mode combinations.
+   */
   private async showTextPreview(filePath: string, item: FileItem) {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
-    // Reset editor state
+    // ── Reset state ────────────────────────────────────────────────────────
     this.editorFilePath = filePath;
     this.editorOriginalContent = null;
     this.editorMtime = null;
+    this.fileViewMode = 'view';
+    this.currentIsMarkdown = isMarkdownExt(item.name);
+    this.mdDisplayMode = 'preview'; // default: rendered markdown
+    this.currentItem = item;
+    this.currentLanguage = getLanguageName(item.name);
 
-    const language = getLanguageName(item.name);
-    const isEditable = this.writeEnabled;
-
+    // ── Loading skeleton ───────────────────────────────────────────────────
     container.innerHTML = `
       <div class="preview-header">
         <div class="preview-title">
@@ -477,43 +513,18 @@ export class FileExplorer {
             <line x1="16" y1="13" x2="8" y2="13"/>
             <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
-          <span id="editor-filename">${this.escapeHtml(item.name)}</span>
-          ${language ? `<span class="lang-badge">${this.escapeHtml(language)}</span>` : ''}
-          ${isEditable ? '<span id="editor-dirty-indicator" class="dirty-indicator" style="display:none" title="Unsaved changes">●</span>' : ''}
+          ${this.escapeHtml(item.name)}
         </div>
-        <div class="preview-actions">
-          ${isEditable ? `
-            <span id="editor-status" class="editor-status" style="display:none"></span>
-            <button id="editor-save-btn" class="btn btn-success" disabled>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              Save
-            </button>
-          ` : ''}
-          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Download
-          </a>
-        </div>
+        <div class="preview-actions"></div>
       </div>
-      ${isEditable
-        ? `<div class="text-preview"><textarea id="editor-textarea" class="editor-textarea" spellcheck="false" placeholder="Loading…"></textarea></div>`
-        : `<div class="code-preview"><pre><code>Loading…</code></pre></div>`
-      }
+      <div class="code-preview"><pre><code>Loading…</code></pre></div>
     `;
 
+    // ── Fetch content ──────────────────────────────────────────────────────
     try {
       const response = await fetch(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
       if (!response.ok) throw new Error('Failed to load file');
 
-      // Capture Last-Modified for conflict detection on save
       const lastModified = response.headers.get('Last-Modified');
       if (lastModified) {
         this.editorMtime = new Date(lastModified).toISOString();
@@ -522,40 +533,245 @@ export class FileExplorer {
       const text = await response.text();
       this.editorOriginalContent = text;
 
-      if (isEditable) {
-        const textarea = container.querySelector<HTMLTextAreaElement>('#editor-textarea');
-        if (textarea) {
-          textarea.value = text;
-          textarea.addEventListener('input', () => this.onEditorInput(textarea));
-        }
-        const saveBtn = container.querySelector<HTMLButtonElement>('#editor-save-btn');
-        if (saveBtn) {
-          saveBtn.addEventListener('click', () => this.saveFile());
-        }
-      } else {
-        const codeEl = container.querySelector('code');
-        if (!codeEl) return;
-
-        const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
-        if (shouldHighlight) {
-          let result: { value: string };
-          if (language && hljs.getLanguage(language)) {
-            result = hljs.highlight(text, { language, ignoreIllegals: true });
-          } else {
-            result = hljs.highlightAuto(text);
-          }
-          codeEl.innerHTML = result.value;
-          codeEl.classList.add('hljs');
-        } else {
-          codeEl.textContent = text;
-        }
-      }
+      // ── Render full UI now that we have content ──────────────────────────
+      this.renderTextPreviewUI();
     } catch (error) {
-      const el = container.querySelector('code, textarea');
-      if (el) {
-        el.textContent = `Error loading file: ${(error as Error).message}`;
+      container.innerHTML = `
+        <div class="preview-placeholder">
+          <p>Error loading file: ${this.escapeHtml((error as Error).message)}</p>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * (Re-)renders the entire text preview pane based on current state:
+   *  - fileViewMode ('view' | 'edit')
+   *  - mdDisplayMode ('preview' | 'raw')  — only relevant for Markdown in view mode
+   *  - writeEnabled                       — controls Edit button visibility
+   *
+   * Safe to call multiple times; completely replaces the DOM inside preview-content.
+   */
+  private renderTextPreviewUI() {
+    const container = document.getElementById('preview-content');
+    if (!container || !this.currentItem || this.editorOriginalContent === null) return;
+
+    const item = this.currentItem;
+    const filePath = this.editorFilePath!;
+    const text = this.editorOriginalContent;
+    const language = this.currentLanguage;
+    const isMarkdown = this.currentIsMarkdown;
+    const mode = this.fileViewMode;
+    const mdMode = this.mdDisplayMode;
+    const isEditable = this.writeEnabled;
+
+    // ── Build action bar ───────────────────────────────────────────────────
+    const langBadge = language
+      ? `<span class="lang-badge">${this.escapeHtml(language)}</span>`
+      : '';
+
+    let actionsHtml = '';
+
+    if (mode === 'view') {
+      // Markdown Raw / Preview toggle
+      if (isMarkdown) {
+        actionsHtml += `
+          <div class="mode-toggle-group" role="group" aria-label="Markdown display mode">
+            <button id="md-preview-btn"
+              class="mode-toggle-btn${mdMode === 'preview' ? ' active' : ''}"
+              aria-pressed="${mdMode === 'preview'}"
+              title="Rendered markdown">Preview</button>
+            <button id="md-raw-btn"
+              class="mode-toggle-btn${mdMode === 'raw' ? ' active' : ''}"
+              aria-pressed="${mdMode === 'raw'}"
+              title="Raw markdown source">Raw</button>
+          </div>
+        `;
+      }
+
+      // Edit button (write mode only)
+      if (isEditable) {
+        actionsHtml += `
+          <button id="edit-mode-btn" class="btn" title="Edit this file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Edit
+          </button>
+        `;
+      }
+    } else {
+      // Edit mode — Save + Cancel
+      actionsHtml += `
+        <span id="editor-status" class="editor-status" style="display:none" aria-live="polite"></span>
+        <button id="editor-cancel-btn" class="btn" title="Discard changes and return to view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Cancel
+        </button>
+        <button id="editor-save-btn" class="btn btn-success" disabled title="Save changes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save
+        </button>
+      `;
+    }
+
+    // Download always present
+    actionsHtml += `
+      <a class="btn btn-primary"
+         href="/api/browse/file?path=${encodeURIComponent(filePath)}"
+         download="${this.escapeHtml(item.name)}"
+         title="Download file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+      </a>
+    `;
+
+    // ── Build dirty indicator (edit mode only) ─────────────────────────────
+    const dirtyIndicator = mode === 'edit'
+      ? `<span id="editor-dirty-indicator" class="dirty-indicator" style="display:none" title="Unsaved changes" aria-label="Unsaved changes">●</span>`
+      : '';
+
+    // ── Build body ─────────────────────────────────────────────────────────
+    let bodyHtml: string;
+
+    if (mode === 'edit') {
+      // Textarea editor — escape the content for safe injection into HTML attribute/textarea
+      const safeText = this.escapeHtml(text);
+      bodyHtml = `
+        <div class="text-preview">
+          <textarea id="editor-textarea"
+            class="editor-textarea"
+            spellcheck="false"
+            aria-label="File editor"
+            placeholder="Loading…">${safeText}</textarea>
+        </div>
+      `;
+    } else if (isMarkdown && mdMode === 'preview') {
+      // Rendered markdown
+      const rendered = this.renderMarkdownContent(text);
+      bodyHtml = `<div class="md-preview" tabindex="0" aria-label="Markdown preview">${rendered}</div>`;
+    } else {
+      // Syntax-highlighted read-only code view
+      const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
+      let codeInner: string;
+      if (shouldHighlight) {
+        let result: { value: string };
+        if (language && hljs.getLanguage(language)) {
+          result = hljs.highlight(text, { language, ignoreIllegals: true });
+        } else {
+          result = hljs.highlightAuto(text);
+        }
+        codeInner = result.value;
+      } else {
+        codeInner = this.escapeHtml(text);
+      }
+      bodyHtml = `
+        <div class="code-preview">
+          <pre><code class="${shouldHighlight ? 'hljs' : ''}">${codeInner}</code></pre>
+        </div>
+      `;
+    }
+
+    // ── Write final HTML ───────────────────────────────────────────────────
+    container.innerHTML = `
+      <div class="preview-header">
+        <div class="preview-title">
+          <svg class="file-icon text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span>${this.escapeHtml(item.name)}</span>
+          ${langBadge}
+          ${dirtyIndicator}
+        </div>
+        <div class="preview-actions">${actionsHtml}</div>
+      </div>
+      ${bodyHtml}
+    `;
+
+    // ── Wire up event listeners ────────────────────────────────────────────
+    this.wireTextPreviewListeners(text);
+  }
+
+  /**
+   * Attaches all interactive event listeners after renderTextPreviewUI() writes HTML.
+   */
+  private wireTextPreviewListeners(originalText: string) {
+    // Markdown toggle buttons
+    document.getElementById('md-preview-btn')?.addEventListener('click', () => {
+      this.mdDisplayMode = 'preview';
+      this.renderTextPreviewUI();
+    });
+
+    document.getElementById('md-raw-btn')?.addEventListener('click', () => {
+      this.mdDisplayMode = 'raw';
+      this.renderTextPreviewUI();
+    });
+
+    // Edit button
+    document.getElementById('edit-mode-btn')?.addEventListener('click', () => {
+      this.enterEditMode();
+    });
+
+    // Cancel button
+    document.getElementById('editor-cancel-btn')?.addEventListener('click', () => {
+      this.exitEditMode();
+    });
+
+    // Textarea input → dirty tracking
+    const textarea = document.querySelector<HTMLTextAreaElement>('#editor-textarea');
+    if (textarea) {
+      textarea.addEventListener('input', () => this.onEditorInput(textarea));
+    }
+
+    // Save button
+    document.getElementById('editor-save-btn')?.addEventListener('click', () => {
+      this.saveFile();
+    });
+  }
+
+  /**
+   * Switches from view mode to edit mode. No prompt needed (no dirty state yet).
+   */
+  private enterEditMode() {
+    this.fileViewMode = 'edit';
+    this.renderTextPreviewUI();
+    // Focus the textarea immediately for ergonomics
+    const textarea = document.querySelector<HTMLTextAreaElement>('#editor-textarea');
+    textarea?.focus();
+  }
+
+  /**
+   * Exits edit mode, returning to view mode.
+   * Prompts the user if there are unsaved changes unless `force` is true.
+   */
+  private exitEditMode(force = false) {
+    if (!force) {
+      const textarea = document.querySelector<HTMLTextAreaElement>('#editor-textarea');
+      const isDirty = textarea && textarea.value !== this.editorOriginalContent;
+      if (isDirty) {
+        const confirmed = window.confirm(
+          'You have unsaved changes. Discard them and return to view?'
+        );
+        if (!confirmed) return;
       }
     }
+    this.fileViewMode = 'view';
+    this.renderTextPreviewUI();
   }
 
   private onEditorInput(textarea: HTMLTextAreaElement) {
@@ -580,7 +796,14 @@ export class FileExplorer {
 
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
+      saveBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Saving…
+      `;
     }
     this.showEditorStatus('', 'success'); // clear previous status
 
@@ -603,7 +826,7 @@ export class FileExplorer {
         throw new Error(data.error || `Server error (${res.status})`);
       }
 
-      // Update tracked state
+      // Update tracked state — content now IS the saved baseline
       this.editorOriginalContent = content;
       if (data.mtime) this.editorMtime = data.mtime;
       this.setEditorDirty(false);
@@ -640,6 +863,26 @@ export class FileExplorer {
       setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
     }
   }
+
+  /**
+   * Renders Markdown source text to HTML using `marked`.
+   * Returned HTML is set as innerHTML of a container — keep this in mind
+   * for trusted (local filesystem) content; not sanitized for XSS.
+   */
+  private renderMarkdownContent(source: string): string {
+    try {
+      const result = marked(source);
+      // marked can return a Promise<string> if async:true — guard against that
+      if (typeof result === 'string') return result;
+      return this.escapeHtml(source); // fallback: raw escaped
+    } catch {
+      return this.escapeHtml(source);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PDF / Download previews (unchanged)
+  // ---------------------------------------------------------------------------
 
   private showPdfPreview(filePath: string, item: FileItem) {
     const container = document.getElementById('preview-content');
@@ -705,10 +948,15 @@ export class FileExplorer {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
-    // Reset editor state when switching away from a file
+    // Reset all text-file state when switching away
     this.editorFilePath = null;
     this.editorOriginalContent = null;
     this.editorMtime = null;
+    this.fileViewMode = 'view';
+    this.currentIsMarkdown = false;
+    this.mdDisplayMode = 'preview';
+    this.currentItem = null;
+    this.currentLanguage = undefined;
 
     container.innerHTML = `
       <div class="preview-placeholder">

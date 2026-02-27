@@ -712,6 +712,222 @@ code.hljs { background: transparent; padding: 0; }
   pointer-events: none;
 }
 
+/* ── Markdown rendered preview ──────────────────────────────────────────── */
+
+.md-preview {
+  flex: 1;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: auto;
+  padding: 24px 32px;
+  color: var(--text);
+  line-height: 1.75;
+  font-size: 14px;
+}
+
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4,
+.md-preview h5,
+.md-preview h6 {
+  color: var(--text);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+  line-height: 1.3;
+}
+
+.md-preview h1:first-child,
+.md-preview h2:first-child {
+  margin-top: 0;
+}
+
+.md-preview h1 {
+  font-size: 1.9em;
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid var(--border);
+}
+
+.md-preview h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-preview h3 { font-size: 1.25em; }
+.md-preview h4 { font-size: 1.05em; }
+
+.md-preview p {
+  margin-bottom: 1em;
+  color: var(--text);
+}
+
+.md-preview a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-preview a:hover {
+  color: var(--primary-dark);
+}
+
+.md-preview strong { font-weight: 700; }
+.md-preview em    { font-style: italic; }
+
+/* Inline code */
+.md-preview :not(pre) > code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.875em;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Code blocks */
+.md-preview pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.md-preview pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: inherit;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* Lists */
+.md-preview ul,
+.md-preview ol {
+  padding-left: 1.75em;
+  margin-bottom: 1em;
+}
+
+.md-preview li {
+  margin-bottom: 0.3em;
+}
+
+.md-preview li > p {
+  margin-bottom: 0.4em;
+}
+
+/* Nested lists */
+.md-preview li > ul,
+.md-preview li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+
+/* Blockquotes */
+.md-preview blockquote {
+  border-left: 4px solid var(--primary);
+  margin: 1em 0;
+  padding: 6px 16px;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.md-preview blockquote p {
+  margin-bottom: 0;
+}
+
+/* Tables */
+.md-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+  font-size: 13px;
+}
+
+.md-preview th,
+.md-preview td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--text);
+}
+
+.md-preview th {
+  background: var(--bg);
+  font-weight: 600;
+}
+
+.md-preview tr:nth-child(even) td {
+  background: var(--bg);
+}
+
+/* Images */
+.md-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+}
+
+/* Horizontal rule */
+.md-preview hr {
+  border: none;
+  border-top: 2px solid var(--border);
+  margin: 1.5em 0;
+}
+
+/* Task list checkboxes (GFM) */
+.md-preview input[type="checkbox"] {
+  margin-right: 6px;
+  cursor: default;
+}
+
+/* ── Mode toggle group (Raw / Preview) ───────────────────────────────────── */
+
+.mode-toggle-group {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.mode-toggle-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.mode-toggle-btn + .mode-toggle-btn {
+  border-left: 1px solid var(--border);
+}
+
+.mode-toggle-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.mode-toggle-btn:hover:not(.active) {
+  background: var(--bg);
+  color: var(--text);
+}
+
 /* ── In-browser Text Editor ─────────────────────────────────────────────── */
 
 /* Editable textarea replaces the read-only <pre> for text files */
