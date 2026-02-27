@@ -34,7 +34,5 @@ ENV PORT=3001
 ENV EXPLORE_ROOT=/explore
 ENV SERVE_APP_ROOT=/app
 
-EXPOSE 3001
-
 # Start server
 CMD ["node", "dist/server/index.js"]
