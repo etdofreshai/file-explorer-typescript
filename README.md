@@ -11,6 +11,7 @@ A web-based file explorer for browsing and previewing files on a mounted volume.
   - Images (PNG, JPG, GIF, WebP, SVG)
   - Audio (MP3, WAV, OGG, etc.)
   - PDFs (iframe embed)
+- 🌙 **Dark / Light Mode**: Toggle via header button; defaults to dark; preference persisted in `localStorage`
 - 📱 **Responsive Design**: Two-pane layout on desktop, stacked on mobile
 - ⬇️ **Downloads**: One-click file download
 
@@ -150,7 +151,7 @@ Tests focus on critical security logic (path traversal prevention).
 - [ ] Video preview support
 - [ ] Archive (ZIP, TAR) preview
 - [ ] Syntax highlighting for code files
-- [ ] Dark mode
+- [x] Dark mode
 - [ ] Internationalization (i18n)
 - [ ] File/folder bookmarking
 - [ ] Thumbnail generation for images

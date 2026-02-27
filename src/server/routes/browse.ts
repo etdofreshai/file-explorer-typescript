@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 import mime from 'mime-types';
 import { sanitizePath, isPathWithinRoot } from '../utils/pathUtils.js';
@@ -100,8 +101,8 @@ router.get('/file', async (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Content-Disposition', `${disposition}; filename="${path.basename(fullPath)}"`);
     res.setHeader('Content-Length', fileSize);
 
-    // Stream the file
-    const fileStream = require('fs').createReadStream(fullPath);
+    // Stream the file (ESM-safe — no require())
+    const fileStream = createReadStream(fullPath);
     fileStream.pipe(res);
   } catch (error) {
     next(error);
