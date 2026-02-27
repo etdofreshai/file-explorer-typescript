@@ -25,14 +25,16 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 
-# Create directories for mounted volumes
-RUN mkdir -p /explore /app
+# Create directory for mounted volume (explore root)
+RUN mkdir -p /explore
 
 # Environment
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV EXPLORE_ROOT=/explore
-ENV SERVE_APP_ROOT=/app
+# SERVE_APP_ROOT is no longer required: server defaults to dist/client/ relative to itself.
+# Override only if you want to serve frontend from a custom path.
+# ENV SERVE_APP_ROOT=/app/dist/client
 
 # Start server
 CMD ["node", "dist/server/index.js"]

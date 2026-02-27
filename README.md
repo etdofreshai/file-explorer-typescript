@@ -71,7 +71,7 @@ Environment variables:
 |----------|---------|-------------|
 | `PORT` | `3001` | Server port |
 | `EXPLORE_ROOT` | `/explore` | Directory to browse |
-| `SERVE_APP_ROOT` | `/app` | Static files directory (production) |
+| `SERVE_APP_ROOT` | *(auto)* | Static files directory (production). Defaults to `dist/client/` relative to the server binary — no manual config needed. Override only for custom/host-mounted frontends. |
 | `NODE_ENV` | `development` | Environment mode |
 
 ## Architecture

@@ -13,7 +13,10 @@ const PORT = process.env.PORT || 3001;
 
 // Configuration
 const EXPLORE_ROOT = process.env.EXPLORE_ROOT || '/explore';
-const SERVE_APP_ROOT = process.env.SERVE_APP_ROOT || '/app';
+// Default: serve dist/client relative to this file (dist/server/index.js → dist/client/)
+// This works regardless of where the container mounts the app, no env var required.
+const defaultServeRoot = path.resolve(__dirname, '..', 'client');
+const SERVE_APP_ROOT = process.env.SERVE_APP_ROOT || defaultServeRoot;
 
 // Middleware
 app.use(cors());

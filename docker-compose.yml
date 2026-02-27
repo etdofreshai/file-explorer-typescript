@@ -9,7 +9,9 @@ services:
     environment:
       - NODE_ENV=production
       - EXPLORE_ROOT=/explore
-      - SERVE_APP_ROOT=/app
+      # SERVE_APP_ROOT not needed: server auto-resolves to dist/client/ relative to itself.
+      # Uncomment + set if you want to override (e.g. host-mounted frontend):
+      # - SERVE_APP_ROOT=/app/dist/client
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
