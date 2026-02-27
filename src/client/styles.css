@@ -355,9 +355,143 @@ html, body {
   height: 16px;
 }
 
-/* Text Preview */
+/* Code / Text Preview */
+.code-preview {
+  flex: 1;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: auto;
+  color: var(--text);
+}
+
+.code-preview pre {
+  padding: 16px;
+  margin: 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  /* horizontal scroll for long lines rather than wrapping */
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.code-preview pre code {
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+/* Language badge shown next to the file name in the preview header */
+.lang-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+/* ── Syntax-highlighting token colours ──────────────────────────────────────
+ * CSS custom properties so both light and dark themes work with one rule set.
+ * Colour palette mirrors GitHub light / dark.
+ * ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --hl-comment:   #6a737d;
+  --hl-string:    #032f62;
+  --hl-keyword:   #d73a49;
+  --hl-type:      #6f42c1;
+  --hl-number:    #005cc5;
+  --hl-attr:      #005cc5;
+  --hl-builtin:   #e36209;
+  --hl-title:     #6f42c1;
+  --hl-tag:       #22863a;
+  --hl-meta:      #005cc5;
+  --hl-deleted:   #b31d28;
+  --hl-added:     #22863a;
+}
+
+[data-theme="dark"] {
+  --hl-comment:   #8b949e;
+  --hl-string:    #a5d6ff;
+  --hl-keyword:   #ff7b72;
+  --hl-type:      #d2a8ff;
+  --hl-number:    #79c0ff;
+  --hl-attr:      #79c0ff;
+  --hl-builtin:   #ffa657;
+  --hl-title:     #d2a8ff;
+  --hl-tag:       #7ee787;
+  --hl-meta:      #79c0ff;
+  --hl-deleted:   #ffa198;
+  --hl-added:     #7ee787;
+}
+
+/* Reset hljs background so it doesn't clash with our --surface */
+code.hljs { background: transparent; padding: 0; }
+
+.hljs-comment,
+.hljs-quote            { color: var(--hl-comment); font-style: italic; }
+
+.hljs-string,
+.hljs-template-string,
+.hljs-template-tag,
+.hljs-regexp           { color: var(--hl-string); }
+
+.hljs-keyword,
+.hljs-operator,
+.hljs-selector-tag     { color: var(--hl-keyword); font-weight: 600; }
+
+.hljs-type,
+.hljs-class,
+.hljs-class .hljs-title,
+.hljs-params           { color: var(--hl-type); }
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet           { color: var(--hl-number); }
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable { color: var(--hl-attr); }
+
+.hljs-built_in,
+.hljs-name,
+.hljs-selector-id      { color: var(--hl-builtin); }
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-class,
+.hljs-function .hljs-title { color: var(--hl-title); }
+
+.hljs-tag,
+.hljs-addition         { color: var(--hl-tag); }
+
+.hljs-meta,
+.hljs-doctag,
+.hljs-meta .hljs-string { color: var(--hl-meta); }
+
+.hljs-deletion         { color: var(--hl-deleted); }
+
+.hljs-emphasis         { font-style: italic; }
+.hljs-strong           { font-weight: bold; }
+.hljs-link             { text-decoration: underline; }
+
+/* ── Legacy .text-preview kept for backward compatibility ──────────────────
+ * ─────────────────────────────────────────────────────────────────────────── */
 .text-preview {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -372,7 +506,7 @@ html, body {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text); /* explicit — some browsers don't inherit color into <pre> reliably */
+  color: var(--text);
 }
 
 /* Image Preview */
@@ -576,6 +710,83 @@ html, body {
   width: 18px;
   height: 18px;
   pointer-events: none;
+}
+
+/* ── In-browser Text Editor ─────────────────────────────────────────────── */
+
+/* Editable textarea replaces the read-only <pre> for text files */
+.editor-textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  padding: 16px;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+  resize: none;
+  outline: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+.editor-textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+/* btn-success — green save button */
+.btn-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: background 0.15s ease;
+  background: var(--success);
+  color: #ffffff;
+}
+
+.btn-success:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn-success:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Unsaved-changes dot indicator */
+.dirty-indicator {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--warning);
+  vertical-align: middle;
+}
+
+/* Save status feedback */
+.editor-status {
+  font-size: 13px;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.editor-status--success {
+  color: var(--success);
+}
+
+.editor-status--error {
+  color: var(--error);
 }
 
 /* Scrollbar styling */

@@ -4,13 +4,15 @@ A web-based file explorer for browsing and previewing files on a mounted volume.
 
 ## Features
 
-- 🔒 **Secure Backend**: Path traversal protection, read-only access
+- 🔒 **Secure Backend**: Path traversal protection, read-only by default
 - 📁 **Directory Browsing**: Navigate folders with breadcrumb navigation
-- 👁️ **File Preview**: 
-  - Text files (code, logs, configs)
+- 👁️ **File Preview**:
+  - **Code / text files** — syntax highlighting for 28+ languages (TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, C#, Kotlin, Swift, Dart, Ruby, PHP, Bash, SQL, JSON, YAML, TOML, XML, HTML, CSS/SCSS, Markdown, and more); editable in write mode
+  - **Robust text detection** — extension + MIME-type fallback so code/config/log files open as text even when the server returns a generic MIME type (fixes `.ts` → `video/mp2t` misdetect)
   - Images (PNG, JPG, GIF, WebP, SVG)
   - Audio (MP3, WAV, OGG, etc.)
   - PDFs (iframe embed)
+- ✏️ **Optional In-Browser Editor**: Edit text files with Save, dirty-state indicator, and conflict detection (opt-in via `ENABLE_WRITE=true`)
 - 🌙 **Dark / Light Mode**: Toggle via header button; defaults to dark; preference persisted in `localStorage`
 - 📱 **Responsive Design**: Two-pane layout on desktop, stacked on mobile
 - ⬇️ **Downloads**: One-click file download
@@ -45,24 +47,19 @@ npm start
 # Build image
 docker build -t file-explorer .
 
-# Run with a volume mounted
+# Run with a volume mounted (read-only — default)
 docker run -p 3001:3001 -v /path/to/files:/explore:ro file-explorer
+
+# Run with write mode enabled (read-write mount required)
+docker run -p 3001:3001 \
+  -v /path/to/files:/explore:rw \
+  -e ENABLE_WRITE=true \
+  file-explorer
 ```
 
 ### Docker Compose
 
-Edit `docker-compose.yml` to set your volume path:
-
-```yaml
-volumes:
-  - /path/to/your/files:/explore:ro
-```
-
-Then run:
-
-```bash
-docker compose up -d
-```
+See `docker-compose.yml` for examples of both read-only and write-enabled modes.
 
 ## Configuration
 
@@ -72,8 +69,38 @@ Environment variables:
 |----------|---------|-------------|
 | `PORT` | `3001` | Server port |
 | `EXPLORE_ROOT` | `/explore` | Directory to browse |
+| `ENABLE_WRITE` | *(unset)* | Set to `true` to enable in-browser editing. **Read the security section first.** |
 | `SERVE_APP_ROOT` | *(auto)* | Static files directory (production). Defaults to `dist/client/` relative to the server binary — no manual config needed. Override only for custom/host-mounted frontends. |
 | `NODE_ENV` | `development` | Environment mode |
+
+## Write Mode (In-Browser Editor)
+
+By default the app is **read-only**. The write endpoint (`PUT /api/browse/file`) returns HTTP 403 unless `ENABLE_WRITE=true` is set in the environment.
+
+When write mode is enabled:
+- Text files display an editable `<textarea>` with a **Save** button
+- The Save button is disabled until the file is changed (dirty state)
+- A `●` indicator appears in the file title when there are unsaved changes
+- On save, the client sends the file's `Last-Modified` timestamp; the server rejects the write with **HTTP 409 Conflict** if the file was modified on disk since the client loaded it
+- Non-text files (images, audio, PDFs) are still read-only and display the same previews as before
+
+### Security Implications of `ENABLE_WRITE=true`
+
+⚠️ **Read carefully before enabling write mode.**
+
+| Risk | Details |
+|------|---------|
+| **Unauthenticated writes** | Any HTTP client that can reach the server can overwrite files. There is no authentication layer built in. |
+| **Data loss** | A bug or malicious request could corrupt files. Keep backups. |
+| **Scope** | Writes are constrained to `EXPLORE_ROOT` via the same path-traversal protections used for reads. Files outside that directory cannot be reached. |
+| **File size** | Writes larger than 5 MB are rejected (HTTP 413). |
+| **Conflict safety** | The server performs an mtime check and rejects stale writes (HTTP 409), but this is not a substitute for proper version control. |
+
+**Recommendations when enabling write mode:**
+1. Run behind a reverse proxy with authentication (e.g., HTTP Basic Auth or OAuth).
+2. Mount only the specific directory that needs to be editable, not your entire filesystem.
+3. Use a `rw` Docker volume only for `EXPLORE_ROOT`; keep other mounts read-only.
+4. Do not expose the port directly to the internet.
 
 ## Architecture
 
@@ -83,16 +110,17 @@ file-explorer-typescript/
 │   ├── server/                 # Express backend
 │   │   ├── index.ts           # Server entry point
 │   │   ├── routes/
-│   │   │   └── browse.ts      # File browsing API
+│   │   │   └── browse.ts      # File browsing + write API
 │   │   ├── middleware/
 │   │   │   └── errorHandler.ts
 │   │   └── utils/
-│   │       └── pathUtils.ts   # Security utilities
+│   │       ├── pathUtils.ts   # Path sanitization & root-boundary checks
+│   │       └── writeGuard.ts  # Write-mode guard & validation helpers
 │   │
 │   └── client/                 # Vite frontend
 │       ├── main.ts            # Entry point
-│       ├── FileExplorer.ts    # Main app class
-│       └── styles.css         # All styles
+│       ├── FileExplorer.ts    # Main app class (includes text editor)
+│       └── styles.css         # All styles (including editor styles)
 │
 ├── public/                     # Static assets
 ├── dist/                       # Build output
@@ -110,21 +138,47 @@ file-explorer-typescript/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Health check — includes `writeEnabled` flag |
 | `GET` | `/api/browse?path=/` | List directory contents |
 | `GET` | `/api/browse/file?path=/file.txt` | Download/preview file |
 | `HEAD` | `/api/browse/file?path=/file.txt` | Get file metadata |
+| `PUT` | `/api/browse/file?path=/file.txt` | Write file (requires `ENABLE_WRITE=true`) |
+
+#### PUT /api/browse/file — Request body (JSON)
+
+```json
+{
+  "content": "new file content as a string",
+  "mtime": "2024-06-15T12:00:00.000Z"
+}
+```
+
+The `mtime` field is optional. When supplied it is compared against the server's
+current `mtime` for the file; if they differ by more than 1 second the request
+is rejected with HTTP 409 so the client can alert the user before overwriting.
+
+#### PUT /api/browse/file — Response codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Write succeeded; body includes `{ success, mtime, size }` |
+| 400 | Bad request (missing content, target is a directory, etc.) |
+| 403 | Write mode disabled, or path traversal detected |
+| 404 | File not found (only existing files can be written) |
+| 409 | Conflict — file was modified on disk since client loaded it |
+| 413 | Content exceeds 5 MB limit |
 
 ### Security
 
-The backend implements multiple layers of path traversal protection:
+The backend implements multiple layers of path traversal protection for both reads **and** writes:
 
-1. **Input Sanitization**: Removes null bytes, normalizes slashes
-2. **Path Normalization**: Resolves `.` and `..` segments
-3. **Root Boundary Check**: Ensures resolved path stays within `EXPLORE_ROOT`
-4. **Read-Only Access**: No write, delete, or modify operations
+1. **Input Sanitization** (`pathUtils.sanitizePath`): Removes null bytes, normalizes slashes, resolves `.` / `..` within a virtual root
+2. **Root Boundary Check** (`pathUtils.isPathWithinRoot`): Ensures the resolved absolute path starts with `EXPLORE_ROOT`
+3. **Write Guard** (`writeGuard.isWriteEnabled`): Requires `ENABLE_WRITE=true` (exact string match, case-sensitive)
+4. **Size Guard** (`writeGuard.isContentTooLarge`): Rejects payloads > 5 MB
+5. **Conflict Guard** (`writeGuard.isMtimeConflict`): Rejects stale writes based on mtime
 
-See `src/server/utils/pathUtils.ts` for implementation details.
+See `src/server/utils/pathUtils.ts` and `src/server/utils/writeGuard.ts` for implementation details.
 
 ## Testing
 
@@ -139,7 +193,10 @@ npm test -- --coverage
 npm run test:watch
 ```
 
-Tests focus on critical security logic (path traversal prevention).
+Tests cover:
+- Path sanitization and traversal prevention (`pathUtils.test.ts`)
+- Write guard logic — enabled/disabled detection, size limits, mtime conflict (`writeGuard.test.ts`)
+- Security attack scenarios (path traversal attempts against both read and write paths)
 
 ## Future Enhancements
 
@@ -150,8 +207,9 @@ Tests focus on critical security logic (path traversal prevention).
 - [ ] File type icons for more formats
 - [ ] Video preview support
 - [ ] Archive (ZIP, TAR) preview
-- [ ] Syntax highlighting for code files
+- [x] Syntax highlighting for code files
 - [x] Dark mode
+- [x] In-browser file editor with write mode
 - [ ] Internationalization (i18n)
 - [ ] File/folder bookmarking
 - [ ] Thumbnail generation for images

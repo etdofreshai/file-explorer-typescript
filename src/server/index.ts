@@ -18,13 +18,19 @@ const EXPLORE_ROOT = process.env.EXPLORE_ROOT || '/explore';
 const defaultServeRoot = path.resolve(__dirname, '..', 'client');
 const SERVE_APP_ROOT = process.env.SERVE_APP_ROOT || defaultServeRoot;
 
+// Write mode: opt-in via ENABLE_WRITE=true
+// ⚠️  Security: enabling write mode allows any browser client to overwrite
+//    files within EXPLORE_ROOT. Only enable on trusted, private networks.
+const WRITE_ENABLED = process.env.ENABLE_WRITE === 'true';
+
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Allow up to 6 MB JSON bodies so the write endpoint can handle ≤5 MB content
+app.use(express.json({ limit: '6mb' }));
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', exploreRoot: EXPLORE_ROOT });
+  res.json({ status: 'ok', exploreRoot: EXPLORE_ROOT, writeEnabled: WRITE_ENABLED });
 });
 
 // API routes
@@ -48,4 +54,5 @@ app.listen(PORT, () => {
   console.log(`File Explorer API running on port ${PORT}`);
   console.log(`Exploring: ${EXPLORE_ROOT}`);
   console.log(`Serving app from: ${SERVE_APP_ROOT}`);
+  console.log(`Write mode: ${WRITE_ENABLED ? '⚠️  ENABLED (ENABLE_WRITE=true)' : 'disabled (read-only)'}`);
 });

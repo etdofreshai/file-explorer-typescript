@@ -1,4 +1,73 @@
 import { showError } from './main.js';
+import { isTextByExtension, getLanguageName } from './codeDetect.js';
+
+// ---------------------------------------------------------------------------
+// highlight.js — import core + the languages we want to bundle
+// ---------------------------------------------------------------------------
+import hljs from 'highlight.js/lib/core';
+import langBash from 'highlight.js/lib/languages/bash';
+import langC from 'highlight.js/lib/languages/c';
+import langCpp from 'highlight.js/lib/languages/cpp';
+import langCsharp from 'highlight.js/lib/languages/csharp';
+import langCss from 'highlight.js/lib/languages/css';
+import langDiff from 'highlight.js/lib/languages/diff';
+import langDockerfile from 'highlight.js/lib/languages/dockerfile';
+import langGo from 'highlight.js/lib/languages/go';
+import langGraphql from 'highlight.js/lib/languages/graphql';
+import langIni from 'highlight.js/lib/languages/ini';
+import langJava from 'highlight.js/lib/languages/java';
+import langJavascript from 'highlight.js/lib/languages/javascript';
+import langJson from 'highlight.js/lib/languages/json';
+import langKotlin from 'highlight.js/lib/languages/kotlin';
+import langLua from 'highlight.js/lib/languages/lua';
+import langMarkdown from 'highlight.js/lib/languages/markdown';
+import langPhp from 'highlight.js/lib/languages/php';
+import langPowershell from 'highlight.js/lib/languages/powershell';
+import langPython from 'highlight.js/lib/languages/python';
+import langR from 'highlight.js/lib/languages/r';
+import langRuby from 'highlight.js/lib/languages/ruby';
+import langRust from 'highlight.js/lib/languages/rust';
+import langScss from 'highlight.js/lib/languages/scss';
+import langShell from 'highlight.js/lib/languages/shell';
+import langSql from 'highlight.js/lib/languages/sql';
+import langSwift from 'highlight.js/lib/languages/swift';
+import langTypescript from 'highlight.js/lib/languages/typescript';
+import langXml from 'highlight.js/lib/languages/xml'; // also covers HTML, Vue, Svelte
+import langYaml from 'highlight.js/lib/languages/yaml';
+
+hljs.registerLanguage('bash', langBash);
+hljs.registerLanguage('c', langC);
+hljs.registerLanguage('cpp', langCpp);
+hljs.registerLanguage('csharp', langCsharp);
+hljs.registerLanguage('css', langCss);
+hljs.registerLanguage('diff', langDiff);
+hljs.registerLanguage('dockerfile', langDockerfile);
+hljs.registerLanguage('go', langGo);
+hljs.registerLanguage('graphql', langGraphql);
+hljs.registerLanguage('ini', langIni);
+hljs.registerLanguage('java', langJava);
+hljs.registerLanguage('javascript', langJavascript);
+hljs.registerLanguage('json', langJson);
+hljs.registerLanguage('kotlin', langKotlin);
+hljs.registerLanguage('lua', langLua);
+hljs.registerLanguage('markdown', langMarkdown);
+hljs.registerLanguage('php', langPhp);
+hljs.registerLanguage('powershell', langPowershell);
+hljs.registerLanguage('python', langPython);
+hljs.registerLanguage('r', langR);
+hljs.registerLanguage('ruby', langRuby);
+hljs.registerLanguage('rust', langRust);
+hljs.registerLanguage('scss', langScss);
+hljs.registerLanguage('shell', langShell);
+hljs.registerLanguage('sql', langSql);
+hljs.registerLanguage('swift', langSwift);
+hljs.registerLanguage('typescript', langTypescript);
+hljs.registerLanguage('xml', langXml);
+hljs.registerLanguage('yaml', langYaml);
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface FileItem {
   name: string;
@@ -15,10 +84,58 @@ interface DirectoryListing {
   items: FileItem[];
 }
 
+interface HealthResponse {
+  status: string;
+  exploreRoot: string;
+  writeEnabled: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum file size (bytes) for which syntax highlighting is applied.
+ * Files larger than this are displayed as plain text to avoid UI sluggishness.
+ */
+const HIGHLIGHT_SIZE_LIMIT = 500 * 1024; // 500 KB
+
+/**
+ * Returns true when a file should be opened as text/code (preview + optional
+ * edit), combining the server-supplied MIME type with extension fallback.
+ */
+function isTextFile(item: FileItem): boolean {
+  const mime = item.mimeType ?? '';
+  if (
+    mime.startsWith('text/') ||
+    mime === 'application/json' ||
+    mime === 'application/javascript' ||
+    mime === 'application/ecmascript' ||
+    mime === 'application/x-sh' ||
+    mime === 'application/xml' ||
+    mime === 'application/sql'
+  ) {
+    return true;
+  }
+  // Extension fallback for files where the server returned a generic MIME type
+  return isTextByExtension(item.name);
+}
+
+// ---------------------------------------------------------------------------
+// FileExplorer class
+// ---------------------------------------------------------------------------
+
 export class FileExplorer {
   private currentPath = '/';
-  private selectedFile: FileItem | null = null;
   private fileCache = new Map<string, DirectoryListing>();
+
+  // Write mode: determined by /api/health on init
+  private writeEnabled = false;
+
+  // Editor state for the currently open text file
+  private editorFilePath: string | null = null;
+  private editorOriginalContent: string | null = null;
+  private editorMtime: string | null = null;
 
   constructor() {
     this.init();
@@ -27,6 +144,7 @@ export class FileExplorer {
   private async init() {
     this.showLoading(true);
     try {
+      await this.fetchHealth();
       await this.navigate('/');
     } catch (error) {
       console.error('Failed to initialize:', error);
@@ -36,13 +154,25 @@ export class FileExplorer {
     }
   }
 
+  private async fetchHealth() {
+    try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+        const data: HealthResponse = await res.json();
+        this.writeEnabled = data.writeEnabled === true;
+      }
+    } catch {
+      this.writeEnabled = false;
+    }
+  }
+
   private async navigate(path: string) {
     this.showLoading(true);
     try {
       const listing = await this.fetchDirectory(path);
       this.currentPath = listing.path;
       this.selectedFile = null;
-      
+
       this.renderBreadcrumb();
       this.renderFileList(listing);
       this.clearPreview();
@@ -55,13 +185,12 @@ export class FileExplorer {
   }
 
   private async fetchDirectory(path: string): Promise<DirectoryListing> {
-    // Check cache first
     if (this.fileCache.has(path)) {
       return this.fileCache.get(path)!;
     }
 
     const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to load directory');
@@ -78,13 +207,11 @@ export class FileExplorer {
 
     container.innerHTML = '';
 
-    // Add root
     const rootBtn = this.createBreadcrumbItem('Root', '/', true);
     container.appendChild(rootBtn);
 
     if (this.currentPath === '/') return;
 
-    // Add path segments
     const segments = this.currentPath.split('/').filter(Boolean);
     let builtPath = '';
 
@@ -92,18 +219,15 @@ export class FileExplorer {
       builtPath += '/' + segment;
       const isLast = index === segments.length - 1;
 
-      // Add separator
       const separator = document.createElement('span');
       separator.className = 'breadcrumb-separator';
       separator.textContent = '/';
       container.appendChild(separator);
 
-      // Add item
       const item = this.createBreadcrumbItem(segment, builtPath, isLast);
       container.appendChild(item);
     });
 
-    // Scroll to end
     container.scrollLeft = container.scrollWidth;
   }
 
@@ -121,7 +245,6 @@ export class FileExplorer {
 
     container.innerHTML = '';
 
-    // Add parent directory button if not at root
     if (listing.parent !== null) {
       const parentItem = this.createFileItem({
         name: '..',
@@ -135,7 +258,6 @@ export class FileExplorer {
       container.appendChild(parentItem);
     }
 
-    // Add items
     if (listing.items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
@@ -151,18 +273,18 @@ export class FileExplorer {
 
     listing.items.forEach(item => {
       const element = this.createFileItem(item);
-      
+
       if (item.type === 'directory') {
         element.addEventListener('click', () => {
-          const newPath = this.currentPath === '/' 
-            ? `/${item.name}` 
+          const newPath = this.currentPath === '/'
+            ? `/${item.name}`
             : `${this.currentPath}/${item.name}`;
           this.navigate(newPath);
         });
       } else {
         element.addEventListener('click', () => this.selectFile(item));
       }
-      
+
       container.appendChild(element);
     });
   }
@@ -196,27 +318,28 @@ export class FileExplorer {
       };
     }
 
-    if (item.mimeType) {
-      if (item.mimeType.startsWith('image/')) {
-        return {
-          class: 'image',
-          path: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
-        };
-      }
+    const mime = item.mimeType ?? '';
 
-      if (item.mimeType.startsWith('audio/')) {
-        return {
-          class: 'audio',
-          path: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
-        };
-      }
+    if (mime.startsWith('image/')) {
+      return {
+        class: 'image',
+        path: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+      };
+    }
 
-      if (item.mimeType.startsWith('text/') || item.mimeType === 'application/json') {
-        return {
-          class: 'text',
-          path: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
-        };
-      }
+    if (mime.startsWith('audio/')) {
+      return {
+        class: 'audio',
+        path: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+      };
+    }
+
+    // Text / code icon — shown for any text-like file
+    if (isTextFile(item)) {
+      return {
+        class: 'text',
+        path: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
+      };
     }
 
     return {
@@ -226,11 +349,10 @@ export class FileExplorer {
   }
 
   private async selectFile(item: FileItem) {
-    // Update selection UI
     document.querySelectorAll('.file-item.selected').forEach(el => {
       el.classList.remove('selected');
     });
-    
+
     const selectedItem = document.querySelector(`.file-item[data-name="${item.name}"]`);
     if (selectedItem) {
       selectedItem.classList.add('selected');
@@ -242,24 +364,32 @@ export class FileExplorer {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
-    if (!item.isPreviewable) {
-      this.showDownloadPreview(item);
-      return;
-    }
-
-    const filePath = this.currentPath === '/' 
-      ? `/${item.name}` 
+    const filePath = this.currentPath === '/'
+      ? `/${item.name}`
       : `${this.currentPath}/${item.name}`;
 
-    // Show preview based on type
+    // Prefer explicit server MIME previewable flag, but also accept files that
+    // pass our extension-based text detection even if the server flagged them
+    // as non-previewable (e.g. unknown extension returned as octet-stream).
+    const textFile = isTextFile(item);
+
     if (item.mimeType?.startsWith('image/')) {
       this.showImagePreview(filePath, item);
     } else if (item.mimeType?.startsWith('audio/')) {
       this.showAudioPreview(filePath, item);
-    } else if (item.mimeType?.startsWith('text/') || item.mimeType === 'application/json') {
-      this.showTextPreview(filePath, item);
     } else if (item.mimeType === 'application/pdf') {
       this.showPdfPreview(filePath, item);
+    } else if (textFile) {
+      await this.showTextPreview(filePath, item);
+    } else if (item.isPreviewable) {
+      // Remaining server-flagged previewable types (e.g. SVG served as image/svg+xml)
+      if (item.mimeType?.startsWith('image/')) {
+        this.showImagePreview(filePath, item);
+      } else {
+        await this.showTextPreview(filePath, item);
+      }
+    } else {
+      this.showDownloadPreview(item);
     }
   }
 
@@ -332,6 +462,8 @@ export class FileExplorer {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
+    const language = getLanguageName(item.name);
+
     container.innerHTML = `
       <div class="preview-header">
         <div class="preview-title">
@@ -342,6 +474,7 @@ export class FileExplorer {
             <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
           ${this.escapeHtml(item.name)}
+          ${language ? `<span class="lang-badge">${this.escapeHtml(language)}</span>` : ''}
         </div>
         <div class="preview-actions">
           <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
@@ -354,24 +487,38 @@ export class FileExplorer {
           </a>
         </div>
       </div>
-      <div class="text-preview">
-        <pre>Loading...</pre>
+      <div class="code-preview">
+        <pre><code>Loading…</code></pre>
       </div>
     `;
 
     try {
       const response = await fetch(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
       if (!response.ok) throw new Error('Failed to load file');
-      
+
       const text = await response.text();
-      const pre = container.querySelector('pre');
-      if (pre) {
-        pre.textContent = text;
+      const codeEl = container.querySelector('code');
+      if (!codeEl) return;
+
+      const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
+
+      if (shouldHighlight) {
+        let result: { value: string };
+        if (language && hljs.getLanguage(language)) {
+          result = hljs.highlight(text, { language, ignoreIllegals: true });
+        } else {
+          result = hljs.highlightAuto(text);
+        }
+        codeEl.innerHTML = result.value;
+        codeEl.classList.add('hljs');
+      } else {
+        // File too large — plain text for performance
+        codeEl.textContent = text;
       }
     } catch (error) {
-      const pre = container.querySelector('pre');
-      if (pre) {
-        pre.textContent = `Error loading file: ${(error as Error).message}`;
+      const codeEl = container.querySelector('code');
+      if (codeEl) {
+        codeEl.textContent = `Error loading file: ${(error as Error).message}`;
       }
     }
   }
@@ -410,8 +557,8 @@ export class FileExplorer {
     const container = document.getElementById('preview-content');
     if (!container) return;
 
-    const filePath = this.currentPath === '/' 
-      ? `/${item.name}` 
+    const filePath = this.currentPath === '/'
+      ? `/${item.name}`
       : `${this.currentPath}/${item.name}`;
 
     container.innerHTML = `
@@ -460,11 +607,11 @@ export class FileExplorer {
 
   private formatSize(bytes: number): string {
     if (bytes === 0) return '0 B';
-    
+
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     const k = 1024;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
   }
 

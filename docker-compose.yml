@@ -1,16 +1,21 @@
+# ─── Read-Only Mode (default) ────────────────────────────────────────────────
+# This is the recommended default.  The volume is mounted read-only (:ro) and
+# write mode is never activated.  Any attempt to call PUT /api/browse/file
+# returns HTTP 403.
+
 services:
   file-explorer:
     build: .
     ports:
       - "3001:3001"
     volumes:
-      # Mount the directory you want to explore
+      # Mount the directory you want to browse — read-only (:ro)
       - /path/to/your/files:/explore:ro
     environment:
       - NODE_ENV=production
       - EXPLORE_ROOT=/explore
-      # SERVE_APP_ROOT not needed: server auto-resolves to dist/client/ relative to itself.
-      # Uncomment + set if you want to override (e.g. host-mounted frontend):
+      # SERVE_APP_ROOT not needed: server auto-resolves to dist/client/
+      # Uncomment + set to override (e.g. host-mounted frontend):
       # - SERVE_APP_ROOT=/app/dist/client
     restart: unless-stopped
     security_opt:
@@ -18,3 +23,34 @@ services:
     read_only: false
     tmpfs:
       - /tmp
+
+
+# ─── Write-Enabled Mode (opt-in) ─────────────────────────────────────────────
+# Uncomment and use this block (instead of the one above) when you need the
+# in-browser text editor.
+#
+# ⚠️  SECURITY WARNING — read the README before enabling write mode:
+#   • Any HTTP client that can reach the server can overwrite files.
+#   • There is NO built-in authentication.
+#   • Only expose this behind a reverse proxy with auth (e.g. Basic Auth).
+#   • Never expose this port directly to the internet.
+#
+# services:
+#   file-explorer:
+#     build: .
+#     ports:
+#       - "3001:3001"
+#     volumes:
+#       # Read-write mount required for write mode (:rw)
+#       # Mount only the specific directory that needs editing, not /
+#       - /path/to/your/files:/explore:rw
+#     environment:
+#       - NODE_ENV=production
+#       - EXPLORE_ROOT=/explore
+#       - ENABLE_WRITE=true     # ← enables PUT /api/browse/file
+#     restart: unless-stopped
+#     security_opt:
+#       - no-new-privileges:true
+#     read_only: false
+#     tmpfs:
+#       - /tmp
