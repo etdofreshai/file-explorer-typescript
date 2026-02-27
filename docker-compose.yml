@@ -17,6 +17,11 @@ services:
       # SERVE_APP_ROOT not needed: server auto-resolves to dist/client/
       # Uncomment + set to override (e.g. host-mounted frontend):
       # - SERVE_APP_ROOT=/app/dist/client
+      #
+      # Optional token gate — set to a non-empty string to require a token
+      # before accessing the UI and API.  The token is validated server-side
+      # only and is never exposed to the client bundle.
+      # - UI_ACCESS_TOKEN=change-me-to-a-long-random-secret
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -47,7 +52,9 @@ services:
 #     environment:
 #       - NODE_ENV=production
 #       - EXPLORE_ROOT=/explore
-#       - ENABLE_WRITE=true     # ← enables PUT /api/browse/file
+#       - ENABLE_WRITE=true            # ← enables PUT /api/browse/file
+#       # Strongly recommended when write mode is on:
+#       # - UI_ACCESS_TOKEN=change-me-to-a-long-random-secret
 #     restart: unless-stopped
 #     security_opt:
 #       - no-new-privileges:true

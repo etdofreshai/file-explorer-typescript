@@ -1023,3 +1023,131 @@ code.hljs { background: transparent; padding: 0; }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
+
+/* ── Auth Gate Modal ────────────────────────────────────────────────────────── */
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  /* Hidden by default — shown when .visible is added */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.auth-overlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.auth-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  box-shadow: var(--shadow-lg), 0 20px 60px rgba(0, 0, 0, 0.35);
+  padding: 40px 32px 32px;
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: auth-slide-in 0.25s ease;
+}
+
+@keyframes auth-slide-in {
+  from { transform: translateY(-16px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.auth-modal-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.auth-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  text-align: center;
+}
+
+.auth-modal-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  text-align: center;
+}
+
+#auth-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.auth-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.auth-submit-btn {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.auth-error {
+  font-size: 13px;
+  color: var(--error);
+  min-height: 18px;
+  text-align: center;
+}
+
+/* Lock button in header */
+.lock-btn {
+  /* Inherits .theme-toggle styles; just needs a margin */
+  margin-right: 0;
+}
+
+.lock-btn:hover {
+  color: var(--error);
+}
+
+/* Mobile: tighten auth modal padding */
+@media (max-width: 480px) {
+  .auth-modal {
+    padding: 28px 20px 24px;
+    gap: 10px;
+  }
+
+  .auth-modal-icon {
+    font-size: 32px;
+  }
+
+  .auth-modal-title {
+    font-size: 18px;
+  }
+}

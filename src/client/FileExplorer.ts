@@ -1,5 +1,6 @@
 import { showError } from './main.js';
 import { isTextByExtension, getLanguageName, isMarkdownExt } from './codeDetect.js';
+import { authFetch } from './auth.js';
 
 // ---------------------------------------------------------------------------
 // highlight.js — import core + the languages we want to bundle
@@ -179,7 +180,7 @@ export class FileExplorer {
 
   private async fetchHealth() {
     try {
-      const res = await fetch('/api/health');
+      const res = await authFetch('/api/health');
       if (res.ok) {
         const data: HealthResponse = await res.json();
         this.writeEnabled = data.writeEnabled === true;
@@ -211,7 +212,7 @@ export class FileExplorer {
       return this.fileCache.get(path)!;
     }
 
-    const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
+    const response = await authFetch(`/api/browse?path=${encodeURIComponent(path)}`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -522,7 +523,7 @@ export class FileExplorer {
 
     // ── Fetch content ──────────────────────────────────────────────────────
     try {
-      const response = await fetch(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
+      const response = await authFetch(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
       if (!response.ok) throw new Error('Failed to load file');
 
       const lastModified = response.headers.get('Last-Modified');
@@ -811,7 +812,7 @@ export class FileExplorer {
       const body: { content: string; mtime?: string } = { content };
       if (this.editorMtime) body.mtime = this.editorMtime;
 
-      const res = await fetch(
+      const res = await authFetch(
         `/api/browse/file?path=${encodeURIComponent(this.editorFilePath)}`,
         {
           method: 'PUT',
