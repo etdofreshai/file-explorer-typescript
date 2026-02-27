@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Explorer</title>
+  <link rel="icon" type="image/svg+xml" href="/folder.svg">
+  <link rel="stylesheet" href="/src/client/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <h1 class="logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          File Explorer
+        </h1>
+        <div class="breadcrumb" id="breadcrumb">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="main">
+      <div class="container">
+        <!-- Sidebar (file list) -->
+        <aside class="sidebar" id="sidebar">
+          <div class="file-list" id="file-list">
+            <!-- Populated by JS -->
+          </div>
+        </aside>
+
+        <!-- Preview panel -->
+        <section class="preview-panel" id="preview-panel">
+          <div class="preview-content" id="preview-content">
+            <div class="preview-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <p>Select a file to preview</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Error toast -->
+    <div class="error-toast" id="error-toast">
+      <span id="error-message"></span>
+      <button class="error-close" onclick="hideError()">&times;</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>

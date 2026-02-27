@@ -1,0 +1,18 @@
+services:
+  file-explorer:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount the directory you want to explore
+      - /path/to/your/files:/explore:ro
+    environment:
+      - NODE_ENV=production
+      - EXPLORE_ROOT=/explore
+      - SERVE_APP_ROOT=/app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
