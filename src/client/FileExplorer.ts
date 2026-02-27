@@ -401,7 +401,7 @@ export class FileExplorer {
         </div>
       </div>
       <div class="image-preview">
-        <iframe src="/api/browse/file?path=${encodeURIComponent(filePath)}" style="width:100%;height:100%;border:none;"></iframe>
+        <iframe src="/api/browse/file?path=${encodeURIComponent(filePath)}"></iframe>
       </div>
     `;
   }
@@ -421,7 +421,7 @@ export class FileExplorer {
           <polyline points="14 2 14 8 20 8"/>
         </svg>
         <p>${this.escapeHtml(item.name)}</p>
-        <p style="font-size: 12px; opacity: 0.7; margin-top: 8px;">
+        <p class="preview-subtext">
           ${item.mimeType || 'Unknown type'} • ${this.formatSize(item.size || 0)}
         </p>
         <a class="btn btn-primary" style="margin-top: 16px" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
