@@ -949,12 +949,52 @@ export class FileExplorer {
   }
 
   private toggleMaximize() {
-    const wasMaximized = document.body.classList.toggle('preview-maximized');
-    // Re-render so the button icon/label reflects the new state
+    const isMaximized = document.body.classList.toggle('preview-maximized');
+    if (isMaximized) {
+      this.mountFloatingRestoreBtn();
+    } else {
+      this.unmountFloatingRestoreBtn();
+    }
+    // Re-render so the in-toolbar maximize button icon updates if the toolbar
+    // ever becomes visible again (it is hidden while maximized, but state must
+    // still be correct for the post-restore render).
     if (this.editorOriginalContent !== null) this.renderTextPreviewUI();
-    // Avoid unused-var warnings
-    void wasMaximized;
   }
+
+  private mountFloatingRestoreBtn() {
+    if (document.getElementById('preview-restore-floating')) return;
+    const btn = document.createElement('button');
+    btn.id = 'preview-restore-floating';
+    btn.className = 'preview-restore-floating';
+    btn.setAttribute('aria-label', 'Exit fullscreen');
+    btn.setAttribute('title', 'Exit fullscreen');
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M4 14h6v6"/><path d="M20 10h-6V4"/>
+        <path d="M14 10l7-7"/><path d="M3 21l7-7"/>
+      </svg>
+    `;
+    btn.addEventListener('click', () => this.toggleMaximize());
+    document.body.appendChild(btn);
+
+    // ESC also exits
+    this.escListener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.body.classList.contains('preview-maximized')) {
+        this.toggleMaximize();
+      }
+    };
+    document.addEventListener('keydown', this.escListener);
+  }
+
+  private unmountFloatingRestoreBtn() {
+    document.getElementById('preview-restore-floating')?.remove();
+    if (this.escListener) {
+      document.removeEventListener('keydown', this.escListener);
+      this.escListener = null;
+    }
+  }
+
+  private escListener: ((e: KeyboardEvent) => void) | null = null;
 
   /**
    * Re-fetch the currently-open file's content from the server. Prompts before

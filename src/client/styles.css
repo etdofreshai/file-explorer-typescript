@@ -362,16 +362,74 @@ html, body {
   font-size: 12px;
 }
 
-/* Maximized preview — covers the entire viewport */
+/* Maximized preview — file contents fill the entire viewport, all chrome hidden */
+body.preview-maximized .header,
+body.preview-maximized .sidebar,
+body.preview-maximized .sidebar-backdrop,
+body.preview-maximized .preview-header {
+  display: none !important;
+}
+
 body.preview-maximized .preview-panel {
   position: fixed;
   inset: 0;
   z-index: 100;
   background: var(--bg);
+  height: 100vh;
+  width: 100vw;
 }
 
 body.preview-maximized .preview-content {
-  padding: 20px;
+  padding: 0;
+  height: 100vh;
+}
+
+/* Make the actual content body fill the screen edge-to-edge */
+body.preview-maximized .code-preview,
+body.preview-maximized .md-preview,
+body.preview-maximized .text-preview {
+  border: none;
+  border-radius: 0;
+  height: 100vh;
+  flex: 1;
+}
+
+body.preview-maximized .md-preview {
+  /* Slightly tighter side padding on small screens, generous on large */
+  padding: 24px clamp(16px, 5vw, 64px) 80px;
+  max-width: 100%;
+}
+
+body.preview-maximized .code-preview pre {
+  padding: 16px clamp(12px, 3vw, 32px) 80px;
+}
+
+/* Floating restore button — bottom-right, always on top */
+.preview-restore-floating {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  opacity: 0.85;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.preview-restore-floating:hover,
+.preview-restore-floating:focus-visible {
+  opacity: 1;
+  transform: scale(1.05);
+  outline: none;
 }
 
 /* Smooth scrolling and pleasant overscroll inside the maximized preview */
