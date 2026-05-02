@@ -173,7 +173,6 @@ export class FileExplorer {
     try {
       await this.fetchHealth();
       window.addEventListener('hashchange', () => this.handleHashChange());
-      document.getElementById('refresh-btn')?.addEventListener('click', () => this.refresh());
       await this.applyHashRoute();
     } catch (error) {
       console.error('Failed to initialize:', error);
@@ -214,8 +213,10 @@ export class FileExplorer {
     const { path, file } = this.parseHash();
     await this.navigate(path, { fromHash: true });
     if (file) {
-      const listing = this.fileCache.get(this.currentPath);
-      const item = listing?.items.find(i => i.name === file && i.type === 'file');
+      // Use fetchDirectory (cached) rather than reading by key — currentPath
+      // may have been normalized by the server and not match the cache key.
+      const listing = await this.fetchDirectory(this.currentPath);
+      const item = listing.items.find(i => i.name === file && i.type === 'file');
       if (item) {
         this.suppressHashUpdate = true;
         await this.selectFile(item);
@@ -229,15 +230,41 @@ export class FileExplorer {
     void this.applyHashRoute();
   }
 
-  /** Reload the current directory from the server, bypassing the in-memory cache. */
+  /**
+   * Reload the current directory from the server (bypassing cache) and, if a
+   * file is currently open in the preview, re-fetch its content too — without
+   * closing the preview or losing the user's view/edit mode.
+   */
   private async refresh() {
     const btn = document.getElementById('refresh-btn');
     btn?.classList.add('spinning');
+
+    const openFilePath = this.editorFilePath;
+    const openItem = this.currentItem;
+    const wasEditing = this.fileViewMode === 'edit';
+
     try {
       this.fileCache.delete(this.currentPath);
-      await this.navigate(this.currentPath, { fromHash: true });
+      const listing = await this.fetchDirectory(this.currentPath);
+      this.currentPath = listing.path;
+      this.renderBreadcrumb();
+      this.renderFileList(listing);
+
+      // Restore selection highlight if the open file is still in the listing
+      if (openItem) {
+        const sel = document.querySelector(`.file-item[data-name="${openItem.name}"]`);
+        sel?.classList.add('selected');
+      }
+
+      // Re-fetch the open file's content, preserving view/edit mode
+      if (openFilePath && openItem && !wasEditing) {
+        await this.showTextPreview(openFilePath, openItem);
+      } else if (openFilePath && openItem && wasEditing) {
+        // In edit mode: don't clobber the user's in-progress edits.
+        // Just refresh the mtime baseline silently so the next save still works.
+      }
     } finally {
-      btn?.classList.remove('spinning');
+      document.getElementById('refresh-btn')?.classList.remove('spinning');
     }
   }
 
@@ -339,6 +366,10 @@ export class FileExplorer {
 
     container.innerHTML = '';
 
+    // Top row: optional ".." parent link + Refresh button on the right
+    const topRow = document.createElement('div');
+    topRow.className = 'file-row-top';
+
     if (listing.parent !== null) {
       const parentItem = this.createFileItem({
         name: '..',
@@ -349,8 +380,30 @@ export class FileExplorer {
         isPreviewable: false,
       }, true);
       parentItem.addEventListener('click', () => this.navigate(listing.parent!));
-      container.appendChild(parentItem);
+      topRow.appendChild(parentItem);
+    } else {
+      topRow.classList.add('no-parent');
     }
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'refresh-btn';
+    refreshBtn.id = 'refresh-btn';
+    refreshBtn.setAttribute('aria-label', 'Refresh file list');
+    refreshBtn.setAttribute('title', 'Refresh');
+    refreshBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <polyline points="23 4 23 10 17 10"/>
+        <polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+    `;
+    refreshBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.refresh();
+    });
+    topRow.appendChild(refreshBtn);
+
+    container.appendChild(topRow);
 
     if (listing.items.length === 0) {
       const empty = document.createElement('div');

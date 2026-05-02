@@ -633,31 +633,52 @@ code.hljs { background: transparent; padding: 0; }
   opacity: 0.5;
 }
 
-/* Sidebar header (refresh button row) */
-.sidebar-header {
+/* First-row layout: parent (..) item with inline Refresh button */
+.file-row-top {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+}
+
+.file-row-top .file-item {
+  flex: 1;
+  width: auto;
+}
+
+.file-row-top.no-parent {
   justify-content: flex-end;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  padding: 4px 8px;
 }
 
 .refresh-btn {
-  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
   height: 32px;
-  padding: 0 10px;
-  gap: 6px;
-  font-size: 13px;
+  padding: 0;
+  margin: auto 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.refresh-btn span {
-  font-weight: 500;
+.refresh-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--primary);
 }
 
 .refresh-btn.spinning svg {
   animation: refresh-spin 0.8s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes refresh-spin {
