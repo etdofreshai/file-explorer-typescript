@@ -164,6 +164,9 @@ export class FileExplorer {
   /** When true, navigate()/selectFile() skip updating the URL hash (used while reacting to a hashchange). */
   private suppressHashUpdate = false;
 
+  /** Zoom factor for text/code/markdown preview, expressed as a multiplier of the base font size. */
+  private previewZoom = 1;
+
   constructor() {
     this.init();
   }
@@ -751,6 +754,56 @@ export class FileExplorer {
       `;
     }
 
+    // Zoom controls (always available in view mode; off during edit so users can't
+    // accidentally zoom the textarea contents into an unreadable size)
+    if (mode === 'view') {
+      actionsHtml += `
+        <div class="zoom-controls" role="group" aria-label="Zoom">
+          <button id="zoom-out-btn" class="btn icon-btn" title="Zoom out" aria-label="Zoom out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+          <button id="zoom-reset-btn" class="btn zoom-reset-btn" title="Reset zoom" aria-label="Reset zoom">
+            ${Math.round(this.previewZoom * 100)}%
+          </button>
+          <button id="zoom-in-btn" class="btn icon-btn" title="Zoom in" aria-label="Zoom in">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      `;
+    }
+
+    // Refresh — re-fetch the open file's content from the server
+    actionsHtml += `
+      <button id="preview-refresh-btn" class="btn icon-btn" title="Refresh file" aria-label="Refresh file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <polyline points="23 4 23 10 17 10"/>
+          <polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
+    `;
+
+    // Maximize toggle — expands preview to fill the entire viewport
+    const isMaximized = document.body.classList.contains('preview-maximized');
+    actionsHtml += `
+      <button id="preview-maximize-btn" class="btn icon-btn" title="${isMaximized ? 'Exit fullscreen' : 'Maximize preview'}" aria-label="${isMaximized ? 'Exit fullscreen' : 'Maximize preview'}" aria-pressed="${isMaximized}">
+        ${isMaximized
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M4 14h6v6"/><path d="M20 10h-6V4"/>
+              <path d="M14 10l7-7"/><path d="M3 21l7-7"/>
+            </svg>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M15 3h6v6"/><path d="M9 21H3v-6"/>
+              <path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
+            </svg>`}
+      </button>
+    `;
+
     // Download always present
     actionsHtml += `
       <a class="btn btn-primary"
@@ -772,6 +825,7 @@ export class FileExplorer {
       : '';
 
     // ── Build body ─────────────────────────────────────────────────────────
+    const zoomStyle = `style="--preview-zoom: ${this.previewZoom};"`;
     let bodyHtml: string;
 
     if (mode === 'edit') {
@@ -789,7 +843,7 @@ export class FileExplorer {
     } else if (isMarkdown && mdMode === 'preview') {
       // Rendered markdown
       const rendered = this.renderMarkdownContent(text);
-      bodyHtml = `<div class="md-preview" tabindex="0" aria-label="Markdown preview">${rendered}</div>`;
+      bodyHtml = `<div class="md-preview" tabindex="0" aria-label="Markdown preview" ${zoomStyle}>${rendered}</div>`;
     } else {
       // Syntax-highlighted read-only code view
       const shouldHighlight = (item.size ?? text.length) <= HIGHLIGHT_SIZE_LIMIT;
@@ -806,7 +860,7 @@ export class FileExplorer {
         codeInner = this.escapeHtml(text);
       }
       bodyHtml = `
-        <div class="code-preview">
+        <div class="code-preview" ${zoomStyle}>
           <pre><code class="${shouldHighlight ? 'hljs' : ''}">${codeInner}</code></pre>
         </div>
       `;
@@ -870,6 +924,68 @@ export class FileExplorer {
     document.getElementById('editor-save-btn')?.addEventListener('click', () => {
       this.saveFile();
     });
+
+    // Zoom controls
+    document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.zoomBy(0.1));
+    document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.zoomBy(-0.1));
+    document.getElementById('zoom-reset-btn')?.addEventListener('click', () => this.resetZoom());
+
+    // Refresh open file
+    document.getElementById('preview-refresh-btn')?.addEventListener('click', () => this.refreshOpenFile());
+
+    // Maximize toggle
+    document.getElementById('preview-maximize-btn')?.addEventListener('click', () => this.toggleMaximize());
+  }
+
+  private zoomBy(delta: number) {
+    const next = Math.min(4, Math.max(0.5, this.previewZoom + delta));
+    this.previewZoom = Math.round(next * 100) / 100;
+    this.renderTextPreviewUI();
+  }
+
+  private resetZoom() {
+    this.previewZoom = 1;
+    this.renderTextPreviewUI();
+  }
+
+  private toggleMaximize() {
+    const wasMaximized = document.body.classList.toggle('preview-maximized');
+    // Re-render so the button icon/label reflects the new state
+    if (this.editorOriginalContent !== null) this.renderTextPreviewUI();
+    // Avoid unused-var warnings
+    void wasMaximized;
+  }
+
+  /**
+   * Re-fetch the currently-open file's content from the server. Prompts before
+   * discarding unsaved edits. Preserves view-vs-edit mode and zoom level.
+   */
+  private async refreshOpenFile() {
+    if (!this.editorFilePath || !this.currentItem) return;
+
+    if (this.fileViewMode === 'edit') {
+      const textarea = document.querySelector<HTMLTextAreaElement>('#editor-textarea');
+      const isDirty = textarea && textarea.value !== this.editorOriginalContent;
+      if (isDirty) {
+        const confirmed = window.confirm(
+          'Refreshing will discard your unsaved changes. Continue?'
+        );
+        if (!confirmed) return;
+      }
+    }
+
+    const btn = document.getElementById('preview-refresh-btn');
+    btn?.classList.add('spinning');
+    const targetMode = this.fileViewMode;
+    try {
+      await this.showTextPreview(this.editorFilePath, this.currentItem);
+      if (targetMode === 'edit' && this.writeEnabled) {
+        this.fileViewMode = 'edit';
+        this.renderTextPreviewUI();
+      }
+    } finally {
+      document.getElementById('preview-refresh-btn')?.classList.remove('spinning');
+    }
   }
 
   /**
