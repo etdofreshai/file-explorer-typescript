@@ -509,6 +509,21 @@ body.preview-maximized .text-preview {
   color: var(--text);
 }
 
+/* Line-wrap mode: wrap long lines, break long unbroken tokens, no horizontal scroll */
+.code-preview.wrap pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
+/* Active toolbar button (for toggles like wrap) */
+.btn.icon-btn.active {
+  background: var(--selected-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .code-preview pre code {
   font-family: inherit;
   font-size: inherit;

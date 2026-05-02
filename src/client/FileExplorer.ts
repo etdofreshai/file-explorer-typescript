@@ -167,6 +167,9 @@ export class FileExplorer {
   /** Zoom factor for text/code/markdown preview, expressed as a multiplier of the base font size. */
   private previewZoom = 1;
 
+  /** Whether long lines wrap in the raw/code view. */
+  private wrapLines = false;
+
   constructor() {
     this.init();
   }
@@ -777,6 +780,25 @@ export class FileExplorer {
       `;
     }
 
+    // Wrap-lines toggle — only meaningful when viewing raw/code (not in markdown preview, not in edit mode)
+    const showWrapToggle = mode === 'view' && !(isMarkdown && mdMode === 'preview');
+    if (showWrapToggle) {
+      actionsHtml += `
+        <button id="wrap-toggle-btn"
+          class="btn icon-btn${this.wrapLines ? ' active' : ''}"
+          title="${this.wrapLines ? 'Disable line wrap' : 'Enable line wrap'}"
+          aria-label="${this.wrapLines ? 'Disable line wrap' : 'Enable line wrap'}"
+          aria-pressed="${this.wrapLines}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="3 6 21 6"/>
+            <path d="M3 12h15a3 3 0 0 1 0 6h-4"/>
+            <polyline points="16 16 14 18 16 20"/>
+            <line x1="3" y1="18" x2="10" y2="18"/>
+          </svg>
+        </button>
+      `;
+    }
+
     // Refresh — re-fetch the open file's content from the server
     actionsHtml += `
       <button id="preview-refresh-btn" class="btn icon-btn" title="Refresh file" aria-label="Refresh file">
@@ -859,8 +881,9 @@ export class FileExplorer {
       } else {
         codeInner = this.escapeHtml(text);
       }
+      const wrapClass = this.wrapLines ? ' wrap' : '';
       bodyHtml = `
-        <div class="code-preview" ${zoomStyle}>
+        <div class="code-preview${wrapClass}" ${zoomStyle}>
           <pre><code class="${shouldHighlight ? 'hljs' : ''}">${codeInner}</code></pre>
         </div>
       `;
@@ -935,6 +958,12 @@ export class FileExplorer {
 
     // Maximize toggle
     document.getElementById('preview-maximize-btn')?.addEventListener('click', () => this.toggleMaximize());
+
+    // Line-wrap toggle
+    document.getElementById('wrap-toggle-btn')?.addEventListener('click', () => {
+      this.wrapLines = !this.wrapLines;
+      this.renderTextPreviewUI();
+    });
   }
 
   private zoomBy(delta: number) {
