@@ -173,6 +173,7 @@ export class FileExplorer {
     try {
       await this.fetchHealth();
       window.addEventListener('hashchange', () => this.handleHashChange());
+      document.getElementById('refresh-btn')?.addEventListener('click', () => this.refresh());
       await this.applyHashRoute();
     } catch (error) {
       console.error('Failed to initialize:', error);
@@ -226,6 +227,25 @@ export class FileExplorer {
   private handleHashChange() {
     if (this.suppressHashUpdate) return;
     void this.applyHashRoute();
+  }
+
+  /** Reload the current directory from the server, bypassing the in-memory cache. */
+  private async refresh() {
+    const btn = document.getElementById('refresh-btn');
+    btn?.classList.add('spinning');
+    try {
+      this.fileCache.delete(this.currentPath);
+      await this.navigate(this.currentPath, { fromHash: true });
+    } finally {
+      btn?.classList.remove('spinning');
+    }
+  }
+
+  private closeSidebarIfMobile() {
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      document.body.classList.remove('sidebar-open');
+      document.getElementById('sidebar-toggle')?.setAttribute('aria-expanded', 'false');
+    }
   }
 
   private async fetchHealth() {
@@ -442,6 +462,7 @@ export class FileExplorer {
       : `${this.currentPath}/${item.name}`;
 
     if (!this.suppressHashUpdate) this.updateHash(this.currentPath, item.name);
+    this.closeSidebarIfMobile();
 
     // Prefer explicit server MIME previewable flag, but also accept files that
     // pass our extension-based text detection even if the server flagged them

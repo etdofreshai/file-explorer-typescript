@@ -43,6 +43,23 @@ initTheme();
 
 document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
 
+// ── Mobile sidebar toggle ────────────────────────────────────────────────────
+
+function setSidebarOpen(open: boolean) {
+  document.body.classList.toggle('sidebar-open', open);
+  const btn = document.getElementById('sidebar-toggle');
+  btn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
+  setSidebarOpen(!document.body.classList.contains('sidebar-open'));
+});
+document.getElementById('sidebar-backdrop')?.addEventListener('click', () => {
+  setSidebarOpen(false);
+});
+
+(window as any)._closeSidebar = () => setSidebarOpen(false);
+
 // ── Auth Gate ────────────────────────────────────────────────────────────────
 
 const authOverlay = document.getElementById('auth-overlay') as HTMLElement | null;
