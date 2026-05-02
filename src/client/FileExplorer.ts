@@ -161,6 +161,9 @@ export class FileExplorer {
   /** highlight.js language identifier for the current file. */
   private currentLanguage: string | undefined = undefined;
 
+  /** When true, navigate()/selectFile() skip updating the URL hash (used while reacting to a hashchange). */
+  private suppressHashUpdate = false;
+
   constructor() {
     this.init();
   }
@@ -169,13 +172,60 @@ export class FileExplorer {
     this.showLoading(true);
     try {
       await this.fetchHealth();
-      await this.navigate('/');
+      window.addEventListener('hashchange', () => this.handleHashChange());
+      await this.applyHashRoute();
     } catch (error) {
       console.error('Failed to initialize:', error);
       showError('Failed to load file explorer');
     } finally {
       this.showLoading(false);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hash-based routing
+  //   #path=/foo/bar           → navigate to folder /foo/bar
+  //   #path=/foo&file=baz.txt  → navigate to /foo and select baz.txt
+  // ---------------------------------------------------------------------------
+
+  private parseHash(): { path: string; file: string | null } {
+    const raw = window.location.hash.replace(/^#/, '');
+    if (!raw) return { path: '/', file: null };
+    const params = new URLSearchParams(raw);
+    const path = params.get('path') || '/';
+    const file = params.get('file');
+    return { path, file };
+  }
+
+  private updateHash(path: string, file: string | null) {
+    const params = new URLSearchParams();
+    params.set('path', path);
+    if (file) params.set('file', file);
+    const next = '#' + params.toString();
+    if (window.location.hash !== next) {
+      this.suppressHashUpdate = true;
+      window.history.replaceState(null, '', next);
+      this.suppressHashUpdate = false;
+    }
+  }
+
+  private async applyHashRoute() {
+    const { path, file } = this.parseHash();
+    await this.navigate(path, { fromHash: true });
+    if (file) {
+      const listing = this.fileCache.get(this.currentPath);
+      const item = listing?.items.find(i => i.name === file && i.type === 'file');
+      if (item) {
+        this.suppressHashUpdate = true;
+        await this.selectFile(item);
+        this.suppressHashUpdate = false;
+      }
+    }
+  }
+
+  private handleHashChange() {
+    if (this.suppressHashUpdate) return;
+    void this.applyHashRoute();
   }
 
   private async fetchHealth() {
@@ -190,7 +240,7 @@ export class FileExplorer {
     }
   }
 
-  private async navigate(path: string) {
+  private async navigate(path: string, opts: { fromHash?: boolean } = {}) {
     this.showLoading(true);
     try {
       const listing = await this.fetchDirectory(path);
@@ -199,6 +249,7 @@ export class FileExplorer {
       this.renderBreadcrumb();
       this.renderFileList(listing);
       this.clearPreview();
+      if (!opts.fromHash) this.updateHash(this.currentPath, null);
     } catch (error) {
       console.error('Navigation error:', error);
       showError(`Failed to navigate: ${(error as Error).message}`);
@@ -389,6 +440,8 @@ export class FileExplorer {
     const filePath = this.currentPath === '/'
       ? `/${item.name}`
       : `${this.currentPath}/${item.name}`;
+
+    if (!this.suppressHashUpdate) this.updateHash(this.currentPath, item.name);
 
     // Prefer explicit server MIME previewable flag, but also accept files that
     // pass our extension-based text detection even if the server flagged them
@@ -931,18 +984,33 @@ export class FileExplorer {
         </svg>
         <p>${this.escapeHtml(item.name)}</p>
         <p class="preview-subtext">
-          ${item.mimeType || 'Unknown type'} • ${this.formatSize(item.size || 0)}
+          File type not recognized — ${item.mimeType || 'Unknown type'} • ${this.formatSize(item.size || 0)}
         </p>
-        <a class="btn btn-primary" style="margin-top: 16px" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Download File
-        </a>
+        <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <button id="open-as-text-btn" class="btn" title="Open this file in the text editor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Open in text editor
+          </button>
+          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download File
+          </a>
+        </div>
       </div>
     `;
+
+    document.getElementById('open-as-text-btn')?.addEventListener('click', () => {
+      void this.showTextPreview(filePath, item);
+    });
   }
 
   private clearPreview() {
