@@ -115,16 +115,32 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const items = await Promise.all(
       entries.map(async (entry) => {
         const entryPath = path.join(fullPath, entry.name);
-        const entryStats = await fs.stat(entryPath);
-        const mimeType = entry.isFile() ? getFileMimeType(entry.name) || 'application/octet-stream' : null;
-        
+        // stat() follows symlinks; fall back to lstat() for broken links so the
+        // listing isn't aborted by a single dangling symlink.
+        let entryStats: Awaited<ReturnType<typeof fs.stat>>;
+        let broken = false;
+        try {
+          entryStats = await fs.stat(entryPath);
+        } catch (err: any) {
+          if (err?.code === 'ENOENT' || err?.code === 'ELOOP') {
+            entryStats = await fs.lstat(entryPath);
+            broken = true;
+          } else {
+            throw err;
+          }
+        }
+        const isDir = broken ? false : entryStats.isDirectory();
+        const isFile = broken ? false : entryStats.isFile();
+        const mimeType = isFile ? getFileMimeType(entry.name) || 'application/octet-stream' : null;
+
         return {
           name: entry.name,
-          type: entry.isDirectory() ? 'directory' : 'file',
-          size: entry.isFile() ? entryStats.size : null,
+          type: isDir ? 'directory' : 'file',
+          size: isFile ? entryStats.size : null,
           modified: entryStats.mtime,
           mimeType,
-          isPreviewable: entry.isFile() ? isPreviewable(mimeType) : false,
+          isPreviewable: isFile ? isPreviewable(mimeType) : false,
+          broken: broken || undefined,
         };
       })
     );
