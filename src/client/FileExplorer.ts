@@ -1,6 +1,6 @@
 import { showError } from './main.js';
 import { isTextByExtension, getLanguageName, isMarkdownExt } from './codeDetect.js';
-import { authFetch } from './auth.js';
+import { authFetch, authUrl } from './auth.js';
 
 // ---------------------------------------------------------------------------
 // highlight.js — import core + the languages we want to bundle
@@ -487,6 +487,13 @@ export class FileExplorer {
       };
     }
 
+    if (mime.startsWith('video/')) {
+      return {
+        class: 'video',
+        path: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',
+      };
+    }
+
     // Text / code icon — shown for any text-like file
     if (isTextFile(item)) {
       return {
@@ -530,6 +537,8 @@ export class FileExplorer {
 
     if (item.mimeType?.startsWith('image/')) {
       this.showImagePreview(filePath, item);
+    } else if (item.mimeType?.startsWith('video/')) {
+      this.showVideoPreview(filePath, item);
     } else if (item.mimeType?.startsWith('audio/')) {
       this.showAudioPreview(filePath, item);
     } else if (item.mimeType === 'application/pdf') {
@@ -548,6 +557,16 @@ export class FileExplorer {
     }
   }
 
+  /** Build a media URL (image/audio/video/iframe src) with the auth token attached. */
+  private mediaUrl(filePath: string): string {
+    return authUrl(`/api/browse/file?path=${encodeURIComponent(filePath)}`);
+  }
+
+  /** Build a download URL: forces server-side `Content-Disposition: attachment`. */
+  private downloadUrl(filePath: string): string {
+    return authUrl(`/api/browse/file?path=${encodeURIComponent(filePath)}&download=1`);
+  }
+
   private showImagePreview(filePath: string, item: FileItem) {
     const container = document.getElementById('preview-content');
     if (!container) return;
@@ -563,7 +582,7 @@ export class FileExplorer {
           ${this.escapeHtml(item.name)}
         </div>
         <div class="preview-actions">
-          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
+          <a class="btn btn-primary" href="${this.downloadUrl(filePath)}" download="${this.escapeHtml(item.name)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
@@ -574,7 +593,40 @@ export class FileExplorer {
         </div>
       </div>
       <div class="image-preview">
-        <img src="/api/browse/file?path=${encodeURIComponent(filePath)}" alt="${this.escapeHtml(item.name)}">
+        <img src="${this.mediaUrl(filePath)}" alt="${this.escapeHtml(item.name)}">
+      </div>
+    `;
+  }
+
+  private showVideoPreview(filePath: string, item: FileItem) {
+    const container = document.getElementById('preview-content');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="preview-header">
+        <div class="preview-title">
+          <svg class="file-icon video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          ${this.escapeHtml(item.name)}
+        </div>
+        <div class="preview-actions">
+          <a class="btn btn-primary" href="${this.downloadUrl(filePath)}" download="${this.escapeHtml(item.name)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download
+          </a>
+        </div>
+      </div>
+      <div class="video-preview">
+        <video controls preload="metadata" playsinline>
+          <source src="${this.mediaUrl(filePath)}" type="${item.mimeType}">
+          Your browser does not support the video element.
+        </video>
       </div>
     `;
   }
@@ -594,7 +646,7 @@ export class FileExplorer {
           ${this.escapeHtml(item.name)}
         </div>
         <div class="preview-actions">
-          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
+          <a class="btn btn-primary" href="${this.downloadUrl(filePath)}" download="${this.escapeHtml(item.name)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
@@ -606,7 +658,7 @@ export class FileExplorer {
       </div>
       <div class="audio-preview">
         <audio controls preload="metadata">
-          <source src="/api/browse/file?path=${encodeURIComponent(filePath)}" type="${item.mimeType}">
+          <source src="${this.mediaUrl(filePath)}" type="${item.mimeType}">
           Your browser does not support the audio element.
         </audio>
       </div>
@@ -829,7 +881,7 @@ export class FileExplorer {
     // Download always present
     actionsHtml += `
       <a class="btn btn-primary"
-         href="/api/browse/file?path=${encodeURIComponent(filePath)}"
+         href="${this.downloadUrl(filePath)}"
          download="${this.escapeHtml(item.name)}"
          title="Download file">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -1211,7 +1263,7 @@ export class FileExplorer {
           ${this.escapeHtml(item.name)}
         </div>
         <div class="preview-actions">
-          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
+          <a class="btn btn-primary" href="${this.downloadUrl(filePath)}" download="${this.escapeHtml(item.name)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
@@ -1222,7 +1274,7 @@ export class FileExplorer {
         </div>
       </div>
       <div class="image-preview">
-        <iframe src="/api/browse/file?path=${encodeURIComponent(filePath)}"></iframe>
+        <iframe src="${this.mediaUrl(filePath)}"></iframe>
       </div>
     `;
   }
@@ -1255,7 +1307,7 @@ export class FileExplorer {
             </svg>
             Open in text editor
           </button>
-          <a class="btn btn-primary" href="/api/browse/file?path=${encodeURIComponent(filePath)}" download="${this.escapeHtml(item.name)}">
+          <a class="btn btn-primary" href="${this.downloadUrl(filePath)}" download="${this.escapeHtml(item.name)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>

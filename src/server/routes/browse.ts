@@ -192,15 +192,40 @@ router.get('/file', async (req: Request, res: Response, next: NextFunction) => {
     const mimeType = getFileMimeType(fullPath) || 'application/octet-stream';
     const fileSize = stats.size;
 
-    // For previewable files, send inline; for others, force download
+    // Allow the client to force a download regardless of preview-ability via ?download=1
+    const forceDownload = req.query.download === '1' || req.query.download === 'true';
     const previewable = isPreviewable(mimeType);
-    const disposition = previewable ? 'inline' : 'attachment';
+    const disposition = forceDownload ? 'attachment' : (previewable ? 'inline' : 'attachment');
 
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `${disposition}; filename="${path.basename(fullPath)}"`);
-    res.setHeader('Content-Length', fileSize);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Last-Modified', stats.mtime.toUTCString());
 
-    // Stream the file (ESM-safe — no require())
+    // Range request support — required for video/audio seeking
+    const rangeHeader = req.headers.range;
+    if (rangeHeader) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+      if (match) {
+        const startStr = match[1];
+        const endStr = match[2];
+        let start = startStr ? parseInt(startStr, 10) : 0;
+        let end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+        if (Number.isNaN(start) || Number.isNaN(end) || start > end || end >= fileSize) {
+          res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+          res.end();
+          return;
+        }
+        const chunkSize = end - start + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.setHeader('Content-Length', chunkSize);
+        createReadStream(fullPath, { start, end }).pipe(res);
+        return;
+      }
+    }
+
+    res.setHeader('Content-Length', fileSize);
     const fileStream = createReadStream(fullPath);
     fileStream.pipe(res);
   } catch (error) {
@@ -351,9 +376,10 @@ function isPreviewable(mimeType: string | null | false): boolean {
   ]);
   if (previewableExact.has(mimeType)) return true;
 
-  // Images and audio
+  // Images, audio, and video
   if (mimeType.startsWith('image/')) return true;
   if (mimeType.startsWith('audio/')) return true;
+  if (mimeType.startsWith('video/')) return true;
 
   return false;
 }

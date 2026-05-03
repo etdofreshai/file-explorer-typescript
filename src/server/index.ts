@@ -37,7 +37,12 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
     next();
     return;
   }
-  const clientToken = req.headers['x-auth-token'] as string | undefined;
+  // Accept the token via either the x-auth-token header (preferred) or a
+  // ?t=<token> query parameter (used by <a href download>, <video src>,
+  // <audio src>, <img src> requests where setting custom headers isn't possible).
+  const headerToken = req.headers['x-auth-token'] as string | undefined;
+  const queryToken = typeof req.query.t === 'string' ? req.query.t : undefined;
+  const clientToken = headerToken || queryToken;
   if (!isValidToken(clientToken)) {
     res.status(401).json({ error: 'Unauthorized. Provide a valid x-auth-token header.' });
     return;

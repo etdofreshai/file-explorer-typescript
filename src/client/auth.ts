@@ -52,3 +52,18 @@ export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise
   headers.set('x-auth-token', token);
   return fetch(input, { ...init, headers });
 }
+
+/**
+ * Appends the stored auth token to a URL as a `?t=...` query parameter so the
+ * server's auth gate accepts requests that can't set custom headers — i.e.
+ * `<a href download>`, `<video src>`, `<audio src>`, `<img src>`, `<iframe src>`.
+ *
+ * If no token is stored (auth disabled or not yet authenticated), returns the
+ * URL unchanged.
+ */
+export function authUrl(url: string): string {
+  const token = getStoredToken();
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}t=${encodeURIComponent(token)}`;
+}

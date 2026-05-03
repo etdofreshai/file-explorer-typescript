@@ -27,6 +27,7 @@
   --icon-folder: #d97706;
   --icon-image: #16a34a;
   --icon-audio: #7c3aed;
+  --icon-video: #db2777;
   --icon-text: #2563eb;
   /* Native controls follow light theme */
   color-scheme: light;
@@ -48,6 +49,7 @@
   --icon-folder: #fbbf24;
   --icon-image: #34d399;
   --icon-audio: #a78bfa;
+  --icon-video: #f472b6;
   --icon-text: #60a5fa;
   /* Native controls (audio, scrollbars, etc.) follow dark theme */
   color-scheme: dark;
@@ -224,6 +226,10 @@ html, body {
 
 .file-icon.audio {
   color: var(--icon-audio);
+}
+
+.file-icon.video {
+  color: var(--icon-video);
 }
 
 .file-icon.text {
@@ -703,6 +709,36 @@ code.hljs { background: transparent; padding: 0; }
   width: 100%;
   /* color-scheme: inherit ensures native controls respect the page's color-scheme */
   color-scheme: inherit;
+}
+
+/* Video Preview */
+.video-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.video-preview video {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  background: #000;
+  color-scheme: inherit;
+}
+
+body.preview-maximized .video-preview {
+  border: none;
+  border-radius: 0;
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
 }
 
 /* Loading */
