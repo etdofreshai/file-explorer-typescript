@@ -376,12 +376,14 @@ body.preview-maximized .preview-panel {
   z-index: 100;
   background: var(--bg);
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
 body.preview-maximized .preview-content {
   padding: 0;
   height: 100vh;
+  height: 100dvh;
 }
 
 /* Make the actual content body fill the screen edge-to-edge */
@@ -391,6 +393,7 @@ body.preview-maximized .text-preview {
   border: none;
   border-radius: 0;
   height: 100vh;
+  height: 100dvh;
   flex: 1;
 }
 
